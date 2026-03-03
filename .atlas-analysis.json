@@ -1,0 +1,140 @@
+{
+  "projectType": "saas",
+  "projectName": "Teak",
+  "projectDescription": "A personal knowledge hub designed to help creative minds effortlessly collect, remember, and rediscover their most important ideas and inspirations.",
+  "theme": "almond",
+  "primaryColor": "#8B7355",
+  "lightColor": "#D4A574",
+  "darkColor": "#5C4A3A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/cards",
+              "features/card-types",
+              "features/search",
+              "features/ai-processing",
+              "features/organization"
+            ]
+          },
+          {
+            "group": "Platforms",
+            "pages": [
+              "platforms/web",
+              "platforms/mobile",
+              "platforms/desktop",
+              "platforms/extension",
+              "platforms/raycast"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-cards",
+              "guides/organizing-cards",
+              "guides/searching",
+              "guides/ai-features",
+              "guides/link-metadata",
+              "guides/color-palettes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Cards",
+            "pages": [
+              "api/cards/create",
+              "api/cards/get",
+              "api/cards/update",
+              "api/cards/delete",
+              "api/cards/search"
+            ]
+          },
+          {
+            "group": "File Operations",
+            "pages": [
+              "api/files/upload",
+              "api/files/get-url"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "development/setup",
+              "development/monorepo",
+              "development/backend"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/architecture",
+              "development/workflows",
+              "development/schema"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/contributing",
+              "development/testing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-platform support (Web, Mobile, Desktop, Browser Extension, Raycast)",
+    "8 card types: text, link, image, video, audio, document, palette, quote",
+    "AI-powered metadata extraction, tagging, and summarization",
+    "Automatic link preview and categorization",
+    "Full-text search across all card content",
+    "Color palette extraction and organization",
+    "Real-time sync with Convex backend",
+    "Desktop authentication flow"
+  ],
+  "publicApiSurface": [
+    "api.card.createCard",
+    "api.card.getCard",
+    "api.card.getCards",
+    "api.card.updateCard",
+    "api.card.deleteCard",
+    "api.card.generateUploadUrl",
+    "api.card.getFileUrl",
+    "api.card.findDuplicateCard",
+    "api.apiKeys.create",
+    "api.apiKeys.revoke",
+    "api.apiKeys.list",
+    "api.authDesktop.generateAuthCode",
+    "api.authDesktop.pollAuthStatus",
+    "api.authDesktop.verifyAuthCode"
+  ]
+}
