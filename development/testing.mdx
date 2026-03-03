@@ -1,0 +1,432 @@
+---
+title: Testing
+description: Learn how to run and write tests for Teak's monorepo architecture
+---
+
+## Running Tests
+
+Teak uses [Bun's built-in test runner](https://bun.sh/docs/cli/test) for fast, reliable testing across all workspaces.
+
+### Run All Tests
+
+Run the entire test suite across all packages:
+
+```bash
+bun run test
+```
+
+This uses Turborepo to run tests in parallel across all workspaces, making it fast even for large monorepos.
+
+### Run Tests for Specific Workspace
+
+Test a specific package using Turborepo filters:
+
+<CodeGroup>
+
+```bash title="Web App"
+turbo run test --filter=@teak/web
+```
+
+```bash title="Convex Backend"
+turbo run test --filter=@teak/convex
+```
+
+```bash title="Mobile App"
+turbo run test --filter=@teak/mobile
+```
+
+```bash title="Browser Extension"
+turbo run test --filter=@teak/extension
+```
+
+</CodeGroup>
+
+### Watch Mode
+
+Run tests in watch mode for active development:
+
+```bash
+bun test --watch
+```
+
+<Tip>
+Watch mode automatically re-runs tests when you save changes, providing instant feedback during development.
+</Tip>
+
+## Test Structure
+
+Teak follows a consistent testing pattern across all packages.
+
+### Test Files
+
+Test files use the `.test.ts` or `.test.tsx` extension and are co-located with the code they test:
+
+```
+packages/convex/
+├── card/
+│   ├── actions.ts
+│   ├── actions.test.ts      # Tests for actions
+│   ├── queries.ts
+│   └── queries.test.ts      # Tests for queries
+├── workflows/
+│   ├── cardProcessing.ts
+│   └── cardProcessing.test.ts
+└── schema.ts
+```
+
+### Example Test
+
+```typescript title="example.test.ts"
+import { describe, test, expect } from "bun:test";
+import { formatCardTitle } from "./utils";
+
+describe("formatCardTitle", () => {
+  test("should capitalize first letter", () => {
+    expect(formatCardTitle("hello world")).toBe("Hello world");
+  });
+
+  test("should handle empty strings", () => {
+    expect(formatCardTitle("")).toBe("");
+  });
+});
+```
+
+## Testing Guidelines
+
+Follow these guidelines from the Teak codebase to write effective tests.
+
+<Steps>
+
+### Write Tests for New Features
+
+When adding a feature, write or update tests and make sure `bun run test` passes.
+
+```typescript
+// ✅ Good: Test covers the new feature
+test("should filter cards by date range", () => {
+  const cards = filterCardsByDate(mockCards, startDate, endDate);
+  expect(cards).toHaveLength(3);
+});
+```
+
+### Add Tests for Bug Fixes
+
+Extend tests when fixing bugs to prevent regressions:
+
+```typescript
+// ✅ Good: Test prevents the bug from happening again
+test("should handle null metadata gracefully", () => {
+  const card = { ...mockCard, metadata: null };
+  expect(() => processCard(card)).not.toThrow();
+});
+```
+
+### Keep Tests Fast
+
+Avoid extra network calls unless the feature requires it:
+
+```typescript
+// ❌ Bad: Unnecessary network call
+test("should format card data", async () => {
+  const card = await fetch("/api/cards/1");
+  expect(formatCard(card)).toBeDefined();
+});
+
+// ✅ Good: Use mock data
+test("should format card data", () => {
+  const card = mockCard;
+  expect(formatCard(card)).toBeDefined();
+});
+```
+
+### Use Deterministic Test Data
+
+Update or add fixtures/test data so tests are deterministic:
+
+```typescript
+// fixtures/cards.ts
+export const mockCard = {
+  _id: "test-card-1",
+  title: "Test Card",
+  type: "text",
+  content: "Test content",
+  createdAt: new Date("2024-01-01").getTime(),
+};
+
+// card.test.ts
+import { mockCard } from "./fixtures/cards";
+
+test("should process card", () => {
+  const result = processCard(mockCard);
+  expect(result.title).toBe("Test Card");
+});
+```
+
+</Steps>
+
+## Testing Convex Functions
+
+Convex functions require special testing considerations.
+
+### Mocking Convex Context
+
+Create mock contexts for queries and mutations:
+
+```typescript
+import { describe, test, expect, mock } from "bun:test";
+
+const mockCtx = {
+  db: {
+    query: mock(() => ({
+      filter: mock(() => ({
+        collect: mock(() => Promise.resolve([mockCard])),
+      })),
+    })),
+  },
+  auth: {
+    getUserIdentity: mock(() => Promise.resolve({ subject: "user-1" })),
+  },
+};
+
+test("should fetch user cards", async () => {
+  const cards = await getUserCards(mockCtx, {});
+  expect(cards).toHaveLength(1);
+});
+```
+
+### Testing Workflows
+
+Test workflow steps independently:
+
+```typescript
+test("should classify card type", async () => {
+  const result = await classifyCard({
+    content: "https://example.com",
+  });
+  expect(result.type).toBe("link");
+});
+
+test("should extract metadata", async () => {
+  const metadata = await extractMetadata(mockLinkCard);
+  expect(metadata).toHaveProperty("title");
+  expect(metadata).toHaveProperty("description");
+});
+```
+
+## Testing React Components
+
+Test React components in web, mobile, and extension packages.
+
+### Component Tests
+
+```typescript
+import { describe, test, expect } from "bun:test";
+import { render, screen } from "@testing-library/react";
+import { CardItem } from "./CardItem";
+
+test("should render card title", () => {
+  render(<CardItem card={mockCard} />);
+  expect(screen.getByText("Test Card")).toBeDefined();
+});
+
+test("should handle click events", async () => {
+  const onClick = mock();
+  render(<CardItem card={mockCard} onClick={onClick} />);
+  
+  const card = screen.getByRole("article");
+  card.click();
+  
+  expect(onClick).toHaveBeenCalledTimes(1);
+});
+```
+
+### Hook Tests
+
+Test custom hooks in isolation:
+
+```typescript
+import { renderHook } from "@testing-library/react";
+import { useCardActions } from "./useCardActions";
+
+test("should delete card", async () => {
+  const { result } = renderHook(() => useCardActions());
+  
+  await result.current.deleteCard("card-1");
+  
+  expect(mockMutation).toHaveBeenCalledWith({ id: "card-1" });
+});
+```
+
+## Test Coverage
+
+While Teak doesn't enforce strict coverage requirements, aim for meaningful test coverage:
+
+### What to Test
+
+- **Critical paths**: User authentication, card creation, data processing
+- **Business logic**: Filtering, sorting, categorization, AI processing
+- **Edge cases**: Empty states, null values, error conditions
+- **Integrations**: API calls, external services, webhooks
+
+### What Not to Test
+
+- Simple getters/setters
+- Third-party library functionality
+- Auto-generated code (Convex `_generated`)
+- Trivial utility functions
+
+<Note>
+Focus on testing behavior and user outcomes rather than implementation details.
+</Note>
+
+## Debugging Tests
+
+### Verbose Output
+
+Run tests with verbose output:
+
+```bash
+bun test --verbose
+```
+
+### Test-specific Runs
+
+Run a specific test file:
+
+```bash
+bun test src/card/actions.test.ts
+```
+
+Run tests matching a pattern:
+
+```bash
+bun test --test-name-pattern "should filter cards"
+```
+
+### Console Logging
+
+Use `console.log` for debugging (remember to remove before committing):
+
+```typescript
+test("should process card", () => {
+  const result = processCard(mockCard);
+  console.log("Result:", result); // Debug output
+  expect(result).toBeDefined();
+});
+```
+
+## Continuous Integration
+
+Tests run automatically in CI on every pull request.
+
+### CI Test Command
+
+```bash
+bun run test
+```
+
+This is the same command that runs locally, ensuring consistency between local and CI environments.
+
+### Test Failures
+
+If tests fail in CI:
+
+1. Review the test output in the GitHub Actions logs
+2. Reproduce the failure locally
+3. Fix the issue and push the changes
+4. Tests will re-run automatically
+
+<Tip>
+Run `bun run test` locally before pushing to catch issues early and avoid CI failures.
+</Tip>
+
+## Best Practices
+
+### Organize Tests
+
+```typescript
+// ✅ Good: Organized with describe blocks
+describe("CardActions", () => {
+  describe("createCard", () => {
+    test("should create text card", () => {});
+    test("should create link card", () => {});
+  });
+
+  describe("updateCard", () => {
+    test("should update card title", () => {});
+    test("should update card content", () => {});
+  });
+});
+```
+
+### Use Descriptive Names
+
+```typescript
+// ❌ Bad: Vague test name
+test("works", () => {});
+
+// ✅ Good: Descriptive test name
+test("should return cards sorted by creation date descending", () => {});
+```
+
+### Test One Thing
+
+```typescript
+// ❌ Bad: Testing multiple things
+test("should work", () => {
+  expect(createCard()).toBeDefined();
+  expect(updateCard()).toBe(true);
+  expect(deleteCard()).toBe(true);
+});
+
+// ✅ Good: One assertion per test
+test("should create card", () => {
+  expect(createCard()).toBeDefined();
+});
+
+test("should update card", () => {
+  expect(updateCard()).toBe(true);
+});
+```
+
+### Avoid Test Interdependence
+
+```typescript
+// ❌ Bad: Tests depend on each other
+let cardId;
+
+test("should create card", () => {
+  cardId = createCard();
+  expect(cardId).toBeDefined();
+});
+
+test("should update card", () => {
+  updateCard(cardId); // Depends on previous test
+});
+
+// ✅ Good: Independent tests
+test("should create card", () => {
+  const cardId = createCard();
+  expect(cardId).toBeDefined();
+});
+
+test("should update card", () => {
+  const cardId = createCard(); // Create its own data
+  updateCard(cardId);
+});
+```
+
+## Summary
+
+Remember these key points when testing:
+
+- Run `bun run test` before committing
+- Write tests for new features and bug fixes
+- Keep tests fast and deterministic
+- Use fixtures for consistent test data
+- Test behavior, not implementation
+- Avoid network calls unless necessary
+
+<Note>
+Good tests make the codebase more maintainable and give you confidence when refactoring or adding features.
+</Note>

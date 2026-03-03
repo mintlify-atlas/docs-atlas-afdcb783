@@ -1,0 +1,509 @@
+---
+title: Convex Workflows
+description: AI processing pipeline using Convex workflows for card classification, categorization, and metadata generation
+---
+
+Teak uses [Convex Workflows](https://docs.convex.dev/workflow) to orchestrate multi-step AI processing pipelines with automatic retries and state management.
+
+## Overview
+
+When a card is created, Teak automatically processes it through a pipeline to:
+
+1. **Classify** the card type (text, link, image, video, etc.)
+2. **Categorize** links into specific categories (article, product, video, etc.)
+3. **Generate metadata** (AI tags, summary, transcript)
+4. **Create renderables** (thumbnails, previews)
+
+This processing happens asynchronously in the background without blocking the user.
+
+## Card Processing Workflow
+
+The main workflow is defined in `cardProcessing.ts:packages/convex/workflows/cardProcessing.ts:43-298`:
+
+```ts
+export const cardProcessingWorkflow = workflow.define({
+  args: {
+    cardId: v.id("cards"),
+  },
+  returns: v.object({
+    success: v.boolean(),
+    classification: v.object({
+      type: v.string(),
+      confidence: v.number(),
+    }),
+    categorization: v.optional(
+      v.object({
+        category: v.string(),
+        confidence: v.number(),
+      })
+    ),
+    metadata: v.object({
+      aiTagsCount: v.number(),
+      hasSummary: v.boolean(),
+      hasTranscript: v.boolean(),
+    }),
+    renderables: v.optional(
+      v.object({
+        thumbnailGenerated: v.boolean(),
+      })
+    ),
+  }),
+  handler: async (step, { cardId }) => {
+    // Workflow implementation
+  },
+});
+```
+
+## Processing Pipeline
+
+The workflow executes steps sequentially with conditional logic:
+
+```
+┌─────────────────────┐
+│  1. Classification  │
+│  Detect card type   │
+└──────────┬──────────┘
+           │
+           ↓
+     ┌─────────────┐
+     │ Is SVG?     │────── No ──┐
+     └─────┬───────┘            │
+         Yes                    │
+           │                    ↓
+           │         ┌──────────────────┐
+           │         │ Palette Extract  │
+           │         │ (for raster img) │
+           │         └─────────┬────────┘
+           │                   │
+           ↓                   │
+     ┌──────────────┐          │
+     │  Is link?    │          │
+     └─────┬────────┘          │
+         Yes                   │
+           │                   │
+           ↓                   │
+ ┌─────────────────────┐       │
+ │ 2. Link Metadata    │       │
+ │ Fetch title, image  │       │
+ └──────────┬──────────┘       │
+            │                  │
+            ↓                  │
+ ┌─────────────────────┐       │
+ │ 3. Categorization   │       │
+ │ Classify link type  │       │
+ │ Fetch structured    │       │
+ │ data (optional)     │       │
+ └──────────┬──────────┘       │
+            │                  │
+            └──────┬───────────┘
+                   │
+                   ↓
+    ┌──────────────────────────┐
+    │   Is video or SVG?       │
+    └──────┬──────────┬────────┘
+         Yes          No
+           │           │
+           ↓           ↓
+ ┌─────────────────┐  ┌─────────────────────────┐
+ │ 4a. Renderables │  │ 4b. Parallel execution: │
+ │ (sequential)    │  │  - Metadata generation  │
+ └────────┬────────┘  │  - Renderables          │
+          │           └──────────┬──────────────┘
+          ↓                      │
+ ┌─────────────────┐             │
+ │ Palette Extract │             │
+ │ (for SVG)       │             │
+ └────────┬────────┘             │
+          │                      │
+          ↓                      │
+ ┌─────────────────┐             │
+ │ 5. Metadata     │             │
+ │ (sequential)    │             │
+ └────────┬────────┘             │
+          │                      │
+          └──────────┬───────────┘
+                     │
+                     ↓
+            ┌─────────────────┐
+            │    Complete     │
+            └─────────────────┘
+```
+
+### Step 1: Classification
+
+Determines the card type if not already set by the client:
+
+```ts
+const classification = await step.runAction(
+  internalWorkflow["workflows/steps/classification"].classify,
+  { cardId }
+);
+```
+
+The classification step returns:
+- `type`: The detected card type (text, link, image, etc.)
+- `confidence`: Confidence score (0-1)
+- `needsLinkMetadata`: Whether link metadata should be fetched
+- `shouldCategorize`: Whether categorization is needed
+- `shouldGenerateMetadata`: Whether AI metadata should be generated
+- `shouldGenerateRenderables`: Whether thumbnails/previews are needed
+
+### Step 2: Link Metadata (Conditional)
+
+For link cards, fetches metadata before proceeding:
+
+```ts
+if (classification.type === "link") {
+  await step.runAction(
+    internalWorkflow["workflows/steps/linkMetadata/fetchMetadata"].fetchMetadata,
+    { cardId },
+    { retry: LINK_METADATA_STEP_RETRY }
+  );
+}
+```
+
+Retry configuration from `cardProcessing.ts:packages/convex/workflows/cardProcessing.ts:24-28`:
+
+```ts
+const LINK_METADATA_STEP_RETRY: RetryBehavior = {
+  maxAttempts: 5,
+  initialBackoffMs: 5000,
+  base: 2,
+};
+```
+
+### Step 3: Categorization (Conditional)
+
+For link cards, classifies the link and optionally fetches structured data:
+
+```ts
+if (classification.shouldCategorize) {
+  // Classify the link
+  const classifyStepResult = await step.runAction(
+    internalWorkflow["workflows/steps/categorization/index"].classifyStep,
+    { cardId },
+    { retry: LINK_ENRICHMENT_STEP_RETRY }
+  );
+
+  // Fetch structured data if needed
+  let structuredData = null;
+  if (classifyStepResult.shouldFetchStructured) {
+    const structuredResult = await step.runAction(
+      internalWorkflow["workflows/steps/categorization/index"].fetchStructuredDataStep,
+      { cardId, sourceUrl: classifyStepResult.sourceUrl, shouldFetch: true },
+      { retry: LINK_ENRICHMENT_STEP_RETRY }
+    );
+    structuredData = structuredResult.structuredData;
+  }
+
+  // Merge and save categorization
+  const categorizationResult = await step.runAction(
+    internalWorkflow["workflows/steps/categorization/index"].mergeAndSaveStep,
+    {
+      cardId,
+      card: classifyStepResult.card,
+      sourceUrl: classifyStepResult.sourceUrl,
+      mode: classifyStepResult.mode,
+      classification: classifyStepResult.classification,
+      existingMetadata: classifyStepResult.existingMetadata,
+      structuredData,
+    },
+    { retry: LINK_ENRICHMENT_STEP_RETRY }
+  );
+}
+```
+
+### Step 4: Metadata & Renderables
+
+For videos and SVG images, renderables are generated first (thumbnails needed for AI processing). For other types, both run in parallel:
+
+```ts
+if (classification.type === "video" || isSvgImage) {
+  // Sequential: renderables first, then metadata
+  renderablesResult = await step.runAction(
+    internalWorkflow["workflows/steps/renderables"].generate,
+    { cardId, cardType: classification.type }
+  );
+  
+  metadataResult = await step.runAction(
+    internalWorkflow["workflows/steps/metadata"].generate,
+    { cardId, cardType: classification.type },
+    { retry: METADATA_STEP_RETRY }
+  );
+} else {
+  // Parallel execution
+  [metadataResult, renderablesResult] = await Promise.all([
+    step.runAction(
+      internalWorkflow["workflows/steps/metadata"].generate,
+      { cardId, cardType: classification.type },
+      { retry: METADATA_STEP_RETRY }
+    ),
+    step.runAction(
+      internalWorkflow["workflows/steps/renderables"].generate,
+      { cardId, cardType: classification.type }
+    ),
+  ]);
+}
+```
+
+Metadata retry configuration from `cardProcessing.ts:packages/convex/workflows/cardProcessing.ts:19-23`:
+
+```ts
+const METADATA_STEP_RETRY: RetryBehavior = {
+  maxAttempts: 8,
+  initialBackoffMs: 400,
+  base: 1.8,
+};
+```
+
+## Link Metadata Workflow
+
+The link metadata workflow is a separate workflow that can be triggered independently:
+
+```ts
+export const linkMetadataWorkflow = workflow.define({
+  args: {
+    cardId: v.id("cards"),
+  },
+  returns: v.object({
+    success: v.boolean(),
+    status: v.string(),
+    errorType: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+  }),
+  handler: linkMetadataWorkflowHandler,
+});
+```
+
+From `linkMetadata.ts:packages/convex/workflows/linkMetadata.ts:44-90`:
+
+```ts
+export const linkMetadataWorkflowHandler = async (
+  step: any,
+  { cardId }: any
+) => {
+  try {
+    const result = await step.runAction(
+      internalWorkflow["workflows/steps/linkMetadata/fetchMetadata"].fetchMetadata,
+      { cardId },
+      { retry: LINK_METADATA_RETRY }
+    );
+
+    return {
+      success: result.status === "success",
+      status: result.status,
+      errorType: result.errorType,
+      errorMessage: result.errorMessage,
+    };
+  } catch (error) {
+    // Handle retryable errors
+    const retryable = parseLinkMetadataRetryableError(error);
+    if (!retryable) {
+      throw error;
+    }
+
+    // Save error to card metadata
+    await step.runMutation(linkMetadataInternal.updateCardMetadata, {
+      cardId,
+      linkPreview: buildErrorPreview(retryable.normalizedUrl, {
+        type: retryable.type ?? "error",
+        message: retryable.message,
+        details: retryable.details,
+      }),
+      status: "failed",
+    });
+
+    return {
+      success: false,
+      status: "failed",
+      errorType: retryable.type ?? "error",
+      errorMessage: retryable.message,
+    };
+  }
+};
+```
+
+## Processing Status Tracking
+
+Each stage of the workflow updates the `processingStatus` field on the card:
+
+```ts
+processingStatus: {
+  classify: {
+    status: "completed",
+    startedAt: 1234567890,
+    completedAt: 1234567895,
+    confidence: 0.95
+  },
+  categorize: {
+    status: "in_progress",
+    startedAt: 1234567896
+  },
+  metadata: {
+    status: "pending"
+  },
+  renderables: {
+    status: "failed",
+    error: "Thumbnail generation failed"
+  }
+}
+```
+
+The status validator from `schema.ts:packages/convex/schema.ts:32-50`:
+
+```ts
+const stageStatusValidator = v.object({
+  status: v.union(
+    v.literal("pending"),
+    v.literal("in_progress"),
+    v.literal("completed"),
+    v.literal("failed")
+  ),
+  startedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  confidence: v.optional(v.number()),
+  error: v.optional(v.string()),
+});
+
+export const processingStatusObjectValidator = v.object({
+  classify: v.optional(stageStatusValidator),
+  categorize: v.optional(stageStatusValidator),
+  metadata: v.optional(stageStatusValidator),
+  renderables: v.optional(stageStatusValidator),
+});
+```
+
+## Retry Behavior
+
+Workflows use exponential backoff for retries:
+
+<CodeGroup>
+```ts Link Metadata
+const LINK_METADATA_STEP_RETRY: RetryBehavior = {
+  maxAttempts: 5,
+  initialBackoffMs: 5000,  // 5 seconds
+  base: 2,                  // Doubles each retry
+};
+// Retry delays: 5s, 10s, 20s, 40s, 80s
+```
+
+```ts Link Enrichment
+const LINK_ENRICHMENT_STEP_RETRY: RetryBehavior = {
+  maxAttempts: 5,
+  initialBackoffMs: 1200,  // 1.2 seconds
+  base: 1.6,
+};
+// Retry delays: 1.2s, 1.9s, 3.1s, 4.9s, 7.9s
+```
+
+```ts AI Metadata
+const METADATA_STEP_RETRY: RetryBehavior = {
+  maxAttempts: 8,
+  initialBackoffMs: 400,   // 400ms
+  base: 1.8,
+};
+// Retry delays: 400ms, 720ms, 1.3s, 2.3s, 4.1s, 7.4s, 13.3s, 24s
+```
+</CodeGroup>
+
+## Triggering Workflows
+
+Workflows are typically triggered by mutations when cards are created:
+
+```ts
+import { workflow } from "./workflows/manager";
+import { internal } from "./_generated/api";
+
+export const createCard = mutation({
+  args: { content: v.string(), type: cardTypeValidator },
+  returns: v.id("cards"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) throw new Error("Unauthorized");
+    
+    const cardId = await ctx.db.insert("cards", {
+      userId: user.id,
+      content: args.content,
+      type: args.type,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      processingStatus: {
+        classify: { status: "pending" },
+      },
+    });
+    
+    // Start workflow asynchronously
+    await workflow.start(
+      ctx,
+      internal.workflows.cardProcessing.cardProcessingWorkflow,
+      { cardId },
+      { startAsync: true }
+    );
+    
+    return cardId;
+  },
+});
+```
+
+<Note>
+Workflows run asynchronously and don't block mutations. The card is immediately available to the user while processing happens in the background.
+</Note>
+
+## Error Handling
+
+Workflows handle errors gracefully:
+
+1. **Retryable errors**: Automatically retry with exponential backoff
+2. **Non-retryable errors**: Mark stage as failed and continue to next stage if possible
+3. **Error tracking**: Store error messages in `processingStatus` for debugging
+
+```ts
+try {
+  const result = await step.runAction(
+    internalWorkflow["workflows/steps/metadata"].generate,
+    { cardId },
+    { retry: METADATA_STEP_RETRY }
+  );
+} catch (error) {
+  // Error is logged and stored in processingStatus.metadata.error
+  console.error("Metadata generation failed:", error);
+  // Workflow continues to next stage
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep processingStatus consistent">
+    Always update the `processingStatus` field when starting, completing, or failing a stage. This allows the UI to show accurate progress.
+    
+    ```ts
+    // Update status when starting
+    await ctx.db.patch(cardId, {
+      "processingStatus.metadata.status": "in_progress",
+      "processingStatus.metadata.startedAt": Date.now(),
+    });
+    
+    // Update when complete
+    await ctx.db.patch(cardId, {
+      "processingStatus.metadata.status": "completed",
+      "processingStatus.metadata.completedAt": Date.now(),
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Use appropriate retry configurations">
+    Choose retry settings based on the operation:
+    - External API calls: Longer delays, fewer retries
+    - AI processing: More retries with moderate delays
+    - Internal operations: Fast retries
+  </Accordion>
+  
+  <Accordion title="Parallelize when possible">
+    Run independent steps in parallel to reduce total processing time. Only sequence steps when one depends on another's output.
+  </Accordion>
+  
+  <Accordion title="Handle partial failures">
+    Don't fail the entire workflow if one optional step fails. Mark that step as failed but continue processing other steps.
+  </Accordion>
+</AccordionGroup>

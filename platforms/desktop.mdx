@@ -1,0 +1,556 @@
+---
+title: Desktop App
+description: The Tauri-based desktop application for macOS, Windows, and Linux
+icon: desktop
+---
+
+The Teak desktop app is a native desktop application built with Tauri v2, combining the power of Rust with a React frontend for a fast, secure, and lightweight experience.
+
+## Overview
+
+Built with Tauri v2, the desktop app provides a native application experience with automatic updates, system tray integration, and native file system access.
+
+<CardGroup cols={2}>
+  <Card title="Technology Stack" icon="code">
+    - Tauri v2
+    - React 19 + Vite
+    - Rust backend
+    - Convex for data sync
+  </Card>
+  <Card title="Platforms" icon="desktop">
+    - macOS (13.0+)
+    - Windows
+    - Linux
+    - Native M1/M2 support
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Native Desktop Experience
+
+<AccordionGroup>
+  <Accordion title="System Integration">
+    - Native window management
+    - System tray icon
+    - Custom title bar
+    - Native file dialogs
+    - Deep linking support
+  </Accordion>
+  <Accordion title="Performance">
+    - Lightweight binary (~10MB)
+    - Fast startup time
+    - Low memory footprint
+    - Rust-powered backend for maximum performance
+  </Accordion>
+  <Accordion title="Security">
+    - Tauri's capability system for permission control
+    - Sandboxed environment
+    - Secure IPC between frontend and Rust backend
+    - Content Security Policy (CSP) enforcement
+  </Accordion>
+</AccordionGroup>
+
+### Automatic Updates
+
+Built-in updater using Tauri's plugin system:
+
+```rust
+// Configured in tauri.conf.json
+"plugins": {
+  "updater": {
+    "endpoints": [
+      "https://updates.teakvault.com/{{target}}/{{arch}}/{{current_version}}"
+    ],
+    "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY"
+  }
+}
+```
+
+<Card title="Update Flow" icon="arrows-rotate">
+  1. App checks for updates on startup
+  2. Downloads update in background
+  3. Prompts user to install
+  4. Seamless installation and restart
+</Card>
+
+### Cross-Platform Support
+
+Single codebase for all desktop platforms:
+
+- **macOS**: Apple Silicon (aarch64) and Intel (x86_64)
+- **Windows**: 64-bit
+- **Linux**: Multiple distributions
+
+## Installation & Setup
+
+### Prerequisites
+
+<Tabs>
+  <Tab title="macOS">
+    - Xcode Command Line Tools
+    - Rust (via rustup)
+    - Node.js 18+ or Bun
+    
+    ```bash
+    xcode-select --install
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+  </Tab>
+  <Tab title="Windows">
+    - Microsoft Visual Studio C++ Build Tools
+    - Rust (via rustup)
+    - Node.js 18+ or Bun
+    
+    ```bash
+    # Install Rust
+    winget install Rustlang.Rustup
+    ```
+  </Tab>
+  <Tab title="Linux">
+    - Build essentials
+    - Rust (via rustup)
+    - Node.js 18+ or Bun
+    - System dependencies
+    
+    ```bash
+    # Ubuntu/Debian
+    sudo apt install libwebkit2gtk-4.1-dev \
+      build-essential \
+      curl \
+      wget \
+      file \
+      libxdo-dev \
+      libssl-dev \
+      libayatana-appindicator3-dev \
+      librsvg2-dev
+    ```
+  </Tab>
+</Tabs>
+
+### Development
+
+<CodeGroup>
+
+```bash Development Mode
+# Install dependencies
+bun install
+
+# Start dev server (hot reload)
+bun run dev
+
+# Or start desktop + Convex
+bun run dev:desktop
+```
+
+```bash Production Build
+# Build for current platform
+bun run build
+
+# Build for macOS Apple Silicon
+bun run build:mac-silicon
+
+# Build frontend only
+bun run build:vite
+```
+
+```bash Quality Checks
+# Type checking
+bun run typecheck
+
+# Preview build
+bun run preview
+```
+
+</CodeGroup>
+
+## Platform-Specific Features
+
+### macOS
+
+<CardGroup cols={2}>
+  <Card title="App Bundle" icon="apple">
+    Native .app bundle with proper code signing and notarization support
+  </Card>
+  <Card title="Menu Bar" icon="bars">
+    Native macOS menu bar with keyboard shortcuts
+  </Card>
+  <Card title="Info.plist" icon="file">
+    Custom Info.plist configuration for permissions and app metadata
+  </Card>
+  <Card title="Universal Binary" icon="microchip">
+    Support for both Intel and Apple Silicon
+  </Card>
+</CardGroup>
+
+### Windows
+
+<CardGroup cols={2}>
+  <Card title="MSI Installer" icon="windows">
+    Windows Installer (.msi) with custom branding
+  </Card>
+  <Card title="Auto-start" icon="power-off">
+    Optional startup on Windows boot
+  </Card>
+  <Card title="System Tray" icon="window-minimize">
+    Minimize to system tray functionality
+  </Card>
+  <Card title="UAC" icon="shield">
+    Proper User Account Control handling
+  </Card>
+</CardGroup>
+
+### Linux
+
+<CardGroup cols={2}>
+  <Card title="AppImage" icon="linux">
+    Portable AppImage distribution
+  </Card>
+  <Card title=".deb Package" icon="box">
+    Debian/Ubuntu package support
+  </Card>
+  <Card title="Desktop Entry" icon="file">
+    XDG desktop integration
+  </Card>
+  <Card title="Themes" icon="palette">
+    Respects system dark/light mode
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Project Structure
+
+```
+desktop/
+├── src/                 # React frontend
+│   ├── pages/           # Page components
+│   │   ├── CardsPage.tsx
+│   │   ├── LoginPage.tsx
+│   │   └── SettingsPage.tsx
+│   ├── components/      # Shared components
+│   │   ├── Layout.tsx
+│   │   └── ErrorBoundary.tsx
+│   ├── App.tsx          # Main app component
+│   └── main.tsx         # Entry point
+├── src-tauri/           # Rust backend
+│   ├── src/
+│   │   ├── main.rs      # Entry point
+│   │   ├── lib.rs       # Library exports
+│   │   └── commands.rs  # Tauri commands
+│   ├── capabilities/    # Permission configs
+│   ├── icons/           # App icons
+│   ├── Cargo.toml       # Rust dependencies
+│   └── tauri.conf.json  # Tauri configuration
+├── vite.config.ts       # Vite configuration
+└── package.json         # Node dependencies
+```
+
+### Tauri Configuration
+
+```json tauri.conf.json
+{
+  "productName": "Teak",
+  "version": "0.1.0",
+  "identifier": "com.praveenjuge.teak",
+  "build": {
+    "beforeDevCommand": "vite",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build:vite",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Teak",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ]
+  }
+}
+```
+
+### Tauri Plugins
+
+The desktop app uses several Tauri plugins:
+
+<AccordionGroup>
+  <Accordion title="@tauri-apps/plugin-store">
+    Persistent key-value storage
+    
+    ```typescript
+    import { Store } from "@tauri-apps/plugin-store";
+    
+    const store = new Store("settings.json");
+    await store.set("theme", "dark");
+    const theme = await store.get("theme");
+    ```
+  </Accordion>
+  <Accordion title="@tauri-apps/plugin-updater">
+    Automatic app updates
+    
+    ```typescript
+    import { check } from "@tauri-apps/plugin-updater";
+    
+    const update = await check();
+    if (update?.available) {
+      await update.downloadAndInstall();
+    }
+    ```
+  </Accordion>
+  <Accordion title="@tauri-apps/plugin-opener">
+    Open URLs and files in default system apps
+    
+    ```typescript
+    import { open } from "@tauri-apps/plugin-opener";
+    
+    await open("https://teakvault.com");
+    ```
+  </Accordion>
+  <Accordion title="@tauri-apps/plugin-process">
+    Process management and exit handling
+    
+    ```typescript
+    import { exit } from "@tauri-apps/plugin-process";
+    
+    await exit(0);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Frontend Stack
+
+### React + Vite
+
+The frontend uses modern React with Vite for fast development:
+
+```typescript vite.config.ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  clearScreen: false,
+  server: {
+    port: 1420,
+    strictPort: true,
+  },
+});
+```
+
+### UI Components
+
+- **Tailwind CSS 4**: Utility-first styling
+- **shadcn/ui**: Reusable component library (via @teak/ui)
+- **Ant Design**: Complex components like date pickers
+- **React Router**: Client-side routing
+- **next-themes**: Dark mode support
+
+### State Management
+
+```typescript
+import { useQuery, useMutation } from "@teak/convex";
+import { api } from "@teak/convex";
+
+// Real-time Convex queries
+const cards = useQuery(api.cards.list);
+const createCard = useMutation(api.cards.create);
+```
+
+## Authentication Flow
+
+The desktop app uses a special OAuth flow:
+
+<Steps>
+  <Step title="Initiate Auth">
+    Desktop app opens the web app in the default browser
+  </Step>
+  <Step title="User Logs In">
+    User authenticates in the browser
+  </Step>
+  <Step title="Callback">
+    Web app redirects to `teak://auth/complete` with auth token
+  </Step>
+  <Step title="Deep Link">
+    Desktop app handles the deep link and stores the session
+  </Step>
+</Steps>
+
+```typescript
+// Deep link handling in Rust
+#[tauri::command]
+fn handle_auth_callback(token: String) -> Result<(), String> {
+    // Store auth token
+    Ok(())
+}
+```
+
+## Building & Distribution
+
+### Code Signing
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    # Set up code signing
+    export APPLE_CERTIFICATE="path/to/cert.p12"
+    export APPLE_CERTIFICATE_PASSWORD="your-password"
+    export APPLE_ID="your-apple-id@email.com"
+    export APPLE_PASSWORD="app-specific-password"
+    
+    # Build with signing
+    bun run build
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```bash
+    # Set up code signing
+    export WINDOWS_CERTIFICATE="path/to/cert.pfx"
+    export WINDOWS_CERTIFICATE_PASSWORD="your-password"
+    
+    # Build with signing
+    bun run build
+    ```
+  </Tab>
+</Tabs>
+
+### Release Process
+
+<Steps>
+  <Step title="Build">
+    Build the application for target platforms
+    
+    ```bash
+    bun run build
+    ```
+  </Step>
+  <Step title="Test">
+    Test the built application thoroughly
+  </Step>
+  <Step title="Upload">
+    Upload artifacts to your update server
+    
+    ```bash
+    # Upload to https://updates.teakvault.com/
+    ```
+  </Step>
+  <Step title="Release">
+    Users get automatic update notifications
+  </Step>
+</Steps>
+
+### Update Server
+
+The updater requires a server that provides:
+
+- Latest version information
+- Download URLs for platform-specific binaries
+- Signature verification
+
+```json update-manifest.json
+{
+  "version": "0.1.0",
+  "notes": "Bug fixes and improvements",
+  "pub_date": "2026-03-03T00:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://updates.teakvault.com/Teak_0.1.0_aarch64.app.tar.gz",
+      "signature": "..."
+    }
+  }
+}
+```
+
+## Performance
+
+### Bundle Size
+
+The desktop app is extremely lightweight:
+
+- **macOS**: ~10MB .app bundle
+- **Windows**: ~8MB .exe
+- **Linux**: ~12MB AppImage
+
+### Memory Usage
+
+Typical memory footprint:
+
+- **Idle**: ~50MB
+- **Active use**: ~100-150MB
+- **Large card library**: ~200MB
+
+### Startup Time
+
+Cold start performance:
+
+- **macOS**: &lt;1 second
+- **Windows**: &lt;1.5 seconds
+- **Linux**: &lt;1.5 seconds
+
+## Security
+
+### Capability System
+
+Tauri v2 uses a capability-based permission system:
+
+```json capabilities/default.json
+{
+  "identifier": "default",
+  "permissions": [
+    "core:default",
+    "store:default",
+    "updater:default"
+  ]
+}
+```
+
+### Content Security Policy
+
+```json
+"security": {
+  "csp": null  // Customize for production
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Build Failures">
+    - Ensure all system dependencies are installed
+    - Check Rust toolchain is up to date: `rustup update`
+    - Clear cargo cache: `cargo clean`
+    - Check Tauri CLI version: `cargo install tauri-cli --version 2`
+  </Accordion>
+  <Accordion title="Dev Server Issues">
+    - Ensure port 1420 is available
+    - Check Vite configuration
+    - Verify frontend dependencies are installed
+  </Accordion>
+  <Accordion title="Update Issues">
+    - Verify update server is accessible
+    - Check signature verification
+    - Ensure app has network permissions
+  </Accordion>
+</AccordionGroup>
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Backend" icon="server" href="/development/backend">
+    Learn about the Convex backend
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/development/architecture">
+    Understand the system architecture
+  </Card>
+  <Card title="Tauri" icon="arrow-up-right-from-square" href="https://tauri.app">
+    Official Tauri documentation
+  </Card>
+  <Card title="Tauri v2" icon="arrow-up-right-from-square" href="https://v2.tauri.app">
+    Tauri v2 migration guide
+  </Card>
+</CardGroup>

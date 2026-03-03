@@ -1,0 +1,527 @@
+---
+title: Database Schema
+description: Convex database schema for cards, API keys, and system tables
+---
+
+Teak's database schema is defined in `schema.ts:packages/convex/schema.ts` using Convex's type-safe schema definition.
+
+## Schema Overview
+
+The database consists of three main tables and one system table:
+
+```ts
+export default defineSchema({
+  cards: defineTable(cardValidator)
+    .index(/* ... */)
+    .searchIndex(/* ... */),
+  apiKeys: defineTable(apiKeyValidator)
+    .index(/* ... */),
+  desktopAuthCodes: defineTable(desktopAuthCodeValidator)
+    .index(/* ... */),
+  // _storage is a system table (not defined here)
+});
+```
+
+## Cards Table
+
+The primary table storing all user content:
+
+### Fields
+
+```ts
+export const cardValidator = v.object({
+  // Core fields
+  userId: v.string(),
+  content: v.string(),
+  type: cardTypeValidator, // "text" | "link" | "image" | etc.
+  url: v.optional(v.string()),
+  fileId: v.optional(v.id("_storage")),
+  thumbnailId: v.optional(v.id("_storage")),
+  
+  // User metadata
+  tags: v.optional(v.array(v.string())),
+  notes: v.optional(v.string()),
+  isFavorited: v.optional(v.boolean()),
+  isDeleted: v.optional(v.boolean()),
+  deletedAt: v.optional(v.number()),
+  
+  // Metadata objects
+  metadata: metadataValidator,
+  fileMetadata: fileMetadataValidator,
+  metadataStatus: v.optional(
+    v.union(v.literal("pending"), v.literal("completed"), v.literal("failed"))
+  ),
+  
+  // Searchable flattened fields
+  metadataTitle: v.optional(v.string()),
+  metadataDescription: v.optional(v.string()),
+  
+  // AI-generated fields
+  aiTags: v.optional(v.array(v.string())),
+  aiSummary: v.optional(v.string()),
+  aiTranscript: v.optional(v.string()),
+  visualStyles: v.optional(v.array(v.string())),
+  
+  // Palette-specific fields
+  colors: v.optional(v.array(colorValidator)),
+  colorHexes: v.optional(v.array(v.string())),
+  colorHues: v.optional(v.array(v.string())),
+  
+  // Pipeline processing status
+  processingStatus: processingStatusValidator,
+  
+  // Timestamps
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+```
+
+### Card Types
+
+Eight supported card types from `schema.ts:packages/convex/schema.ts:6-15`:
+
+```ts
+export const cardTypes = [
+  "text",      // Plain text notes
+  "link",      // URLs with metadata
+  "image",     // Images with palette extraction
+  "video",     // Videos with thumbnails
+  "audio",     // Audio recordings
+  "document",  // PDFs and documents
+  "palette",   // Color palettes
+  "quote",     // Quoted text
+] as const;
+
+export type CardType = (typeof cardTypes)[number];
+```
+
+### Metadata Structure
+
+#### Link Preview Metadata
+
+For link cards, rich preview data is stored:
+
+```ts
+metadata: {
+  linkPreview: {
+    source: "opengraph" | "oembed" | "scraper",
+    status: "success" | "error",
+    fetchedAt: 1234567890,
+    url: "https://example.com",
+    finalUrl: "https://example.com/final",
+    canonicalUrl: "https://example.com/canonical",
+    title: "Page Title",
+    description: "Page description",
+    imageUrl: "https://example.com/image.jpg",
+    imageStorageId: "kg2h4...",
+    imageUpdatedAt: 1234567890,
+    imageWidth: 1200,
+    imageHeight: 630,
+    faviconUrl: "https://example.com/favicon.ico",
+    siteName: "Example Site",
+    author: "John Doe",
+    publisher: "Example Publisher",
+    publishedAt: "2024-01-01T00:00:00Z",
+    screenshotStorageId: "kg2h5...",
+    screenshotUpdatedAt: 1234567890,
+    screenshotWidth: 1920,
+    screenshotHeight: 1080,
+    error: {
+      type: "timeout",
+      message: "Request timed out",
+      details: { /* ... */ }
+    },
+    raw: { /* original API response */ }
+  },
+  linkCategory: {
+    category: "article",
+    confidence: 0.95,
+    detectedProvider: "medium.com",
+    fetchedAt: 1234567890,
+    sourceUrl: "https://example.com",
+    imageUrl: "https://example.com/image.jpg",
+    facts: [
+      {
+        label: "Author",
+        value: "John Doe",
+        icon: "user"
+      }
+    ],
+    raw: { /* structured data */ }
+  }
+}
+```
+
+#### File Metadata
+
+For file-based cards (image, video, audio, document):
+
+```ts
+fileMetadata: {
+  fileSize: 1024000,           // bytes
+  fileName: "image.jpg",
+  mimeType: "image/jpeg",
+  duration: 120,               // seconds (video/audio)
+  width: 1920,                 // pixels (image/video)
+  height: 1080,                // pixels (image/video)
+  recordingTimestamp: 1234567890
+}
+```
+
+#### Color Palette
+
+For palette cards and images:
+
+```ts
+colors: [
+  {
+    hex: "#FF5733",
+    name: "Sunset Orange",
+    rgb: { r: 255, g: 87, b: 51 },
+    hsl: { h: 12, s: 100, l: 60 }
+  },
+  // ... more colors
+]
+colorHexes: ["#FF5733", "#33FF57", ...]  // Flattened for search
+colorHues: ["red", "green", ...]          // Categorized hues for search
+```
+
+### Processing Status
+
+Tracks the progress of each AI processing stage from `schema.ts:packages/convex/schema.ts:32-54`:
+
+```ts
+processingStatus: {
+  classify: {
+    status: "completed",
+    startedAt: 1234567890,
+    completedAt: 1234567895,
+    confidence: 0.95,
+    error: undefined
+  },
+  categorize: {
+    status: "in_progress",
+    startedAt: 1234567896,
+    completedAt: undefined,
+    confidence: undefined,
+    error: undefined
+  },
+  metadata: {
+    status: "pending",
+    startedAt: undefined,
+    completedAt: undefined,
+    confidence: undefined,
+    error: undefined
+  },
+  renderables: {
+    status: "failed",
+    startedAt: 1234567890,
+    completedAt: 1234567900,
+    confidence: undefined,
+    error: "Thumbnail generation failed: invalid format"
+  }
+}
+```
+
+### Indexes
+
+Optimized indexes for common query patterns from `schema.ts:packages/convex/schema.ts:213-224`:
+
+```ts
+.index("by_user_type", ["userId", "type"])
+.index("by_user_type_deleted", ["userId", "type", "isDeleted"])
+.index("by_user_favorites", ["userId", "isFavorited"])
+.index("by_user_favorites_deleted", ["userId", "isFavorited", "isDeleted"])
+.index("by_user_deleted", ["userId", "isDeleted"])
+.index("by_created", ["userId", "createdAt"])
+.index("by_user_url_deleted", ["userId", "url", "isDeleted"])
+```
+
+<Info>
+The `by_user` index was removed as redundant - `by_user_deleted` serves the same purpose with partial index matching per Convex best practices.
+</Info>
+
+### Search Indexes
+
+Full-text search across multiple fields from `schema.ts:packages/convex/schema.ts:226-271`:
+
+```ts
+.searchIndex("search_content", {
+  searchField: "content",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_notes", {
+  searchField: "notes",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_ai_summary", {
+  searchField: "aiSummary",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_ai_transcript", {
+  searchField: "aiTranscript",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_metadata_title", {
+  searchField: "metadataTitle",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_metadata_description", {
+  searchField: "metadataDescription",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_tags", {
+  searchField: "tags",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_ai_tags", {
+  searchField: "aiTags",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_visual_styles", {
+  searchField: "visualStyles",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_color_hexes", {
+  searchField: "colorHexes",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_color_hues", {
+  searchField: "colorHues",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+```
+
+<Note>
+Search indexes eliminate full table scans for tag and color searches, significantly improving performance.
+</Note>
+
+## API Keys Table
+
+Stores API keys for programmatic access from `schema.ts:packages/convex/schema.ts:148-160`:
+
+```ts
+export const apiKeyValidator = v.object({
+  userId: v.string(),
+  name: v.string(),
+  keyPrefix: v.string(),        // First 8 chars for identification
+  keyHash: v.string(),           // Hashed key for verification
+  access: v.literal("full_access"),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  lastUsedAt: v.optional(v.number()),
+  revokedAt: v.optional(v.number()),
+});
+```
+
+### Indexes
+
+```ts
+.index("by_user_revoked", ["userId", "revokedAt"])
+.index("by_prefix_revoked", ["keyPrefix", "revokedAt"])
+```
+
+## Desktop Auth Codes Table
+
+Manages authentication codes for desktop app from `schema.ts:packages/convex/schema.ts:162-174`:
+
+```ts
+export const desktopAuthCodeValidator = v.object({
+  sessionId: v.string(),
+  userId: v.string(),
+  deviceId: v.string(),
+  codeHash: v.optional(v.string()),      // Deprecated
+  codeChallenge: v.string(),
+  state: v.string(),
+  expiresAt: v.number(),
+  consumedAt: v.optional(v.number()),
+  createdAt: v.number(),
+});
+```
+
+### Indexes
+
+```ts
+.index("by_expires_at", ["expiresAt"])
+.index("by_device_state_consumed", ["deviceId", "state", "consumedAt"])
+.index("by_user", ["userId"])
+```
+
+<Info>
+The `codeHash` field is deprecated for backward compatibility. New records use polling-only authentication and do not set this field.
+</Info>
+
+## System Tables
+
+### _storage
+
+Convex's built-in file storage table (not defined in schema):
+
+```ts
+type FileMetadata = {
+  _id: Id<"_storage">,
+  _creationTime: number,
+  contentType?: string,
+  sha256: string,
+  size: number,
+};
+```
+
+Access file metadata via `ctx.db.system.get()`:
+
+```ts
+import type { Id } from "./_generated/dataModel";
+
+export const getFileMetadata = query({
+  args: { fileId: v.id("_storage") },
+  returns: v.union(
+    v.object({
+      _id: v.id("_storage"),
+      _creationTime: v.number(),
+      contentType: v.optional(v.string()),
+      sha256: v.string(),
+      size: v.number(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    return await ctx.db.system.get(args.fileId);
+  },
+});
+```
+
+## Type Exports
+
+The schema exports TypeScript types for use throughout the application:
+
+```ts
+import type { Doc, Id } from "@teak/convex/_generated/dataModel";
+import type { CardType, LinkCategory } from "@teak/convex/schema";
+
+// Document types
+type Card = Doc<"cards">;
+type ApiKey = Doc<"apiKeys">;
+type DesktopAuthCode = Doc<"desktopAuthCodes">;
+
+// ID types
+type CardId = Id<"cards">;
+type StorageId = Id<"_storage">;
+
+// Custom types
+type MyCardType = CardType;  // "text" | "link" | "image" | ...
+```
+
+## Query Examples
+
+### Get Cards by Type
+
+```ts
+const imageCards = await ctx.db
+  .query("cards")
+  .withIndex("by_user_type_deleted", (q) =>
+    q.eq("userId", userId)
+     .eq("type", "image")
+     .eq("isDeleted", false)
+  )
+  .order("desc")
+  .take(20);
+```
+
+### Search Cards
+
+```ts
+const results = await ctx.db
+  .query("cards")
+  .withSearchIndex("search_content", (q) =>
+    q.search("content", searchQuery)
+     .eq("userId", userId)
+     .eq("isDeleted", false)
+  )
+  .take(50);
+```
+
+### Check for Duplicate URLs
+
+```ts
+const existingCard = await ctx.db
+  .query("cards")
+  .withIndex("by_user_url_deleted", (q) =>
+    q.eq("userId", userId)
+     .eq("url", normalizedUrl)
+     .eq("isDeleted", false)
+  )
+  .unique();
+```
+
+### Get Favorites
+
+```ts
+const favorites = await ctx.db
+  .query("cards")
+  .withIndex("by_user_favorites_deleted", (q) =>
+    q.eq("userId", userId)
+     .eq("isFavorited", true)
+     .eq("isDeleted", false)
+  )
+  .order("desc")
+  .collect();
+```
+
+## Schema Migrations
+
+When changing the schema:
+
+1. Update validators in `schema.ts`
+2. Deploy schema changes: `bun run dev:convex`
+3. Convex automatically handles additive changes (new optional fields)
+4. For breaking changes, write migration functions
+
+<Warning>
+Removing fields or changing types requires careful migration to avoid data loss. Always test schema changes in development first.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use indexes for all queries">
+    Never use `.filter()` on queries without an index. Always define an index in the schema for your query pattern.
+    
+    ```ts
+    // Bad: Full table scan
+    const cards = await ctx.db.query("cards")
+      .filter(q => q.eq(q.field("userId"), userId))
+      .collect();
+    
+    // Good: Uses index
+    const cards = await ctx.db.query("cards")
+      .withIndex("by_user_deleted", q => q.eq("userId", userId))
+      .collect();
+    ```
+  </Accordion>
+  
+  <Accordion title="Flatten fields for search">
+    Store flattened versions of nested data for efficient search indexing:
+    
+    ```ts
+    // Store both nested and flattened
+    metadata: { linkPreview: { title: "Page Title" } },
+    metadataTitle: "Page Title"  // Flattened for search index
+    ```
+  </Accordion>
+  
+  <Accordion title="Use compound indexes wisely">
+    Compound indexes must be queried in order. Create separate indexes for different query patterns:
+    
+    ```ts
+    // Can query by userId only or userId + type
+    .index("by_user_type", ["userId", "type"])
+    
+    // Can query by userId only or userId + isFavorited
+    .index("by_user_favorites", ["userId", "isFavorited"])
+    ```
+  </Accordion>
+  
+  <Accordion title="Keep optional fields optional">
+    Use `v.optional()` for all fields that may not be present initially or for all card types. This prevents validation errors during card creation.
+  </Accordion>
+</AccordionGroup>

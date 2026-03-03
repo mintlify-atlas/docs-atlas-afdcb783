@@ -1,0 +1,214 @@
+---
+title: 'Authentication'
+description: 'Authenticate API requests with API keys'
+---
+
+## Overview
+
+The Teak API uses **Bearer token authentication** with API keys. Each API key is tied to your user account and provides full access to your personal knowledge hub.
+
+<Warning>
+  API keys provide complete access to your Teak account. Keep them secure and never share them publicly.
+</Warning>
+
+## Generating API Keys
+
+You can generate an API key from your Teak settings:
+
+1. Navigate to **Settings** in your Teak web app
+2. Go to the **API Keys** section
+3. Click **Generate API Key**
+4. Copy the generated key immediately - you won't be able to see it again
+
+<Note>
+  Generating a new API key will automatically revoke any existing keys. Only one API key can be active per user at a time.
+</Note>
+
+## API Key Format
+
+API keys follow this format:
+
+```
+teakapi_[prefix]_[secret]
+```
+
+- **Prefix**: A 12-character hex identifier (6 bytes)
+- **Secret**: A 48-character hex secret (24 bytes)
+
+### Example
+
+```
+teakapi_a1b2c3d4e5f6_1234567890abcdef1234567890abcdef1234567890abcdef
+```
+
+## Using API Keys
+
+Include your API key in the `Authorization` header of every request using the Bearer authentication scheme:
+
+```
+Authorization: Bearer teakapi_[your-api-key]
+```
+
+### Example cURL Request
+
+```bash
+curl -X GET "https://[your-deployment].convex.cloud/api/raycast/search?q=example" \
+  -H "Authorization: Bearer teakapi_a1b2c3d4e5f6_1234567890abcdef1234567890abcdef1234567890abcdef"
+```
+
+### Example JavaScript Request
+
+```javascript
+const response = await fetch(
+  'https://[your-deployment].convex.cloud/api/raycast/quick-save',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer teakapi_a1b2c3d4e5f6_1234567890abcdef1234567890abcdef1234567890abcdef',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      content: 'https://example.com',
+    }),
+  }
+);
+
+const data = await response.json();
+console.log(data);
+```
+
+### Example Python Request
+
+```python
+import requests
+
+url = 'https://[your-deployment].convex.cloud/api/raycast/quick-save'
+headers = {
+    'Authorization': 'Bearer teakapi_a1b2c3d4e5f6_1234567890abcdef1234567890abcdef1234567890abcdef',
+    'Content-Type': 'application/json',
+}
+data = {
+    'content': 'https://example.com',
+}
+
+response = requests.post(url, headers=headers, json=data)
+print(response.json())
+```
+
+## API Key Security
+
+<Warning>
+  **Security Best Practices**
+  
+  - Never commit API keys to version control
+  - Use environment variables to store API keys
+  - Rotate keys regularly
+  - Revoke keys immediately if compromised
+</Warning>
+
+### Key Storage
+
+API keys are securely hashed using SHA-256 with a server-side pepper before storage. The full key is only displayed once during generation.
+
+### Key Revocation
+
+API keys are automatically revoked when:
+
+- You generate a new API key
+- You manually revoke the key from settings
+- Your user account is deleted
+
+Revoked keys return a `401 Unauthorized` response:
+
+```json
+{
+  "code": "INVALID_API_KEY",
+  "error": "Invalid or revoked API key"
+}
+```
+
+## Authentication Errors
+
+### Missing Authorization Header
+
+**Status**: `401 Unauthorized`
+
+```json
+{
+  "code": "UNAUTHORIZED",
+  "error": "Missing or invalid Authorization header"
+}
+```
+
+This error occurs when:
+- The `Authorization` header is missing
+- The header format is incorrect (not "Bearer [token]")
+- The token value is empty
+
+### Invalid API Key
+
+**Status**: `401 Unauthorized`
+
+```json
+{
+  "code": "INVALID_API_KEY",
+  "error": "Invalid or revoked API key"
+}
+```
+
+This error occurs when:
+- The API key format is incorrect
+- The API key doesn't exist in the database
+- The API key has been revoked
+- The associated user account no longer exists
+
+### Rate Limited
+
+**Status**: `429 Too Many Requests`
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "error": "Too many requests",
+  "retryAt": 1704067200000
+}
+```
+
+API keys are rate limited to 120 requests per minute. See the [API Overview](/api/overview#rate-limits) for more details.
+
+## API Key Metadata
+
+You can view metadata about your active API key in the settings:
+
+- **Name**: Custom name for the key (defaults to "API Keys")
+- **Key Prefix**: First 12 characters for identification (e.g., `a1b2c3d4e5f6••••••••`)
+- **Created At**: When the key was generated
+- **Last Used At**: Most recent API request timestamp
+
+<Info>
+  The `lastUsedAt` timestamp is updated every time you make an authenticated API request.
+</Info>
+
+## Access Levels
+
+All API keys currently have `full_access` permission, which allows:
+
+- Creating new cards (text, links, images, etc.)
+- Searching all cards
+- Viewing and filtering favorites
+- Full read/write access to your personal knowledge hub
+
+<Note>
+  More granular permission levels may be added in future releases.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Overview" icon="book" href="/api/overview">
+    Learn about available endpoints and rate limits
+  </Card>
+  <Card title="Create Card Endpoint" icon="plus" href="/api/cards/create">
+    Start creating cards via the API
+  </Card>
+</CardGroup>

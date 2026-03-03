@@ -1,0 +1,437 @@
+---
+title: Link Metadata
+description: Understand how Teak fetches, parses, and enriches link previews with Open Graph data and screenshots
+---
+
+## Overview
+
+When you save a link card, Teak automatically fetches rich metadata including titles, descriptions, images, and screenshots. This metadata powers link previews and makes links searchable.
+
+## Metadata Extraction Workflow
+
+<Steps>
+  <Step title="Card Creation">
+    User creates a link card:
+
+    ```typescript
+    await createCard({
+      content: "Interesting article",
+      url: "https://example.com/article",
+      type: "link"
+    });
+    ```
+
+    The card is created with `metadataStatus: "pending"`.
+  </Step>
+
+  <Step title="Processing Workflow Starts">
+    The card processing workflow detects it's a link and triggers metadata extraction:
+
+    ```typescript
+    // From cardProcessing.ts:131-148
+    if (classification.type === "link") {
+      const needsLinkMetadata = linkMetadataCard?.metadataStatus === "pending";
+
+      if (needsLinkMetadata) {
+        await step.runAction(
+          internal.workflows.steps.linkMetadata.fetchMetadata.fetchMetadata,
+          { cardId },
+          { retry: LINK_METADATA_STEP_RETRY }
+        );
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Fetch and Parse">
+    Teak fetches the URL and extracts:
+
+    - Open Graph tags (`og:title`, `og:description`, `og:image`)
+    - Twitter Card tags (`twitter:title`, `twitter:image`)
+    - Standard HTML meta tags
+    - Page title from `<title>` tag
+  </Step>
+
+  <Step title="Save Metadata">
+    Extracted data is saved to the card:
+
+    ```typescript
+    await updateCardMetadata({
+      cardId,
+      linkPreview: {
+        title: "Article Title",
+        description: "Article description...",
+        imageUrl: "https://example.com/og-image.jpg",
+        imageStorageId: storageId,
+        status: "success"
+      },
+      status: "completed"
+    });
+    ```
+  </Step>
+</Steps>
+
+## Link Preview Structure
+
+```typescript
+interface LinkPreview {
+  title?: string;                    // Page title
+  description?: string;              // Meta description
+  imageUrl?: string;                 // OG image URL
+  imageStorageId?: Id<"_storage">;   // Stored OG image
+  imageWidth?: number;               // OG image dimensions
+  imageHeight?: number;
+  imageUpdatedAt?: number;           // Image fetch timestamp
+  screenshotStorageId?: Id<"_storage">; // Full page screenshot
+  screenshotWidth?: number;          // Screenshot dimensions
+  screenshotHeight?: number;
+  screenshotUpdatedAt?: number;      // Screenshot timestamp
+  status: "pending" | "success" | "failed";
+}
+```
+
+## Metadata Fields
+
+Teak extracts and normalizes these fields:
+
+### Core Fields
+
+| Field | Sources | Fallback |
+| ----- | ------- | -------- |
+| `title` | `og:title`, `twitter:title`, `<title>` | URL |
+| `description` | `og:description`, `twitter:description`, `meta[name=description]` | None |
+| `imageUrl` | `og:image`, `twitter:image`, `meta[property=image]` | None |
+
+### Searchable Metadata
+
+Two fields are denormalized for search performance:
+
+```typescript
+{
+  metadataTitle: "Article Title",        // Indexed by search_metadata_title
+  metadataDescription: "Description...", // Indexed by search_metadata_description
+  metadata: {
+    linkPreview: {
+      title: "Article Title",
+      description: "Description..."
+    }
+  }
+}
+```
+
+<Note>
+The denormalized fields enable fast full-text search without parsing nested objects.
+</Note>
+
+## Parsing Logic
+
+Teak uses a selector-based parsing system defined in `packages/convex/linkMetadata/selectors.ts`.
+
+### Selector Priority
+
+<Tabs items={['Title', 'Description', 'Image']}>
+  <Tab value="Title">
+    ```typescript
+    const titleSelectors = [
+      { type: "og", property: "og:title" },
+      { type: "twitter", name: "twitter:title" },
+      { type: "meta", property: "title" },
+      { type: "tag", selector: "title" }
+    ];
+    ```
+
+    Teak tries each selector in order until a value is found.
+  </Tab>
+
+  <Tab value="Description">
+    ```typescript
+    const descriptionSelectors = [
+      { type: "og", property: "og:description" },
+      { type: "twitter", name: "twitter:description" },
+      { type: "meta", name: "description" }
+    ];
+    ```
+  </Tab>
+
+  <Tab value="Image">
+    ```typescript
+    const imageSelectors = [
+      { type: "og", property: "og:image" },
+      { type: "og", property: "og:image:url" },
+      { type: "twitter", name: "twitter:image" },
+      { type: "meta", property: "image" }
+    ];
+    ```
+  </Tab>
+</Tabs>
+
+### Parsing Function
+
+```typescript
+import { parseLinkPreview } from "@teak/convex/linkMetadata/parsing";
+
+const preview = parseLinkPreview({
+  html: "<html>...",
+  url: "https://example.com",
+  selectors: {
+    title: titleSelectors,
+    description: descriptionSelectors,
+    image: imageSelectors
+  }
+});
+```
+
+<Note>
+See `packages/convex/linkMetadata/parsing.ts` for full implementation.
+</Note>
+
+## Image Handling
+
+### OG Image Storage
+
+Open Graph images are downloaded and stored in Convex:
+
+<Steps>
+  <Step title="Fetch Image">
+    ```typescript
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    ```
+  </Step>
+
+  <Step title="Upload to Storage">
+    ```typescript
+    const storageId = await ctx.storage.store(blob);
+    ```
+  </Step>
+
+  <Step title="Save to Card">
+    ```typescript
+    linkPreview.imageStorageId = storageId;
+    linkPreview.imageUpdatedAt = Date.now();
+    ```
+  </Step>
+</Steps>
+
+### Image Replacement
+
+When refreshing metadata, old images are deleted:
+
+```typescript
+// From linkMetadata.ts:44-71
+if (previousLinkPreview?.imageStorageId) {
+  if (
+    nextLinkPreview?.imageStorageId &&
+    nextLinkPreview.imageStorageId !== previousLinkPreview.imageStorageId
+  ) {
+    try {
+      await ctx.storage.delete(previousLinkPreview.imageStorageId);
+    } catch (error) {
+      console.error(`Failed to delete previous OG image`, error);
+    }
+  }
+}
+```
+
+<Tip>
+This prevents storage bloat from outdated images.
+</Tip>
+
+## Screenshot Generation
+
+For link cards, Teak can optionally generate full-page screenshots.
+
+### Updating Screenshots
+
+```typescript
+import { internal } from "@teak/convex";
+
+await ctx.runMutation(
+  internal.linkMetadata.updateCardScreenshot,
+  {
+    cardId,
+    screenshotStorageId: storageId,
+    screenshotUpdatedAt: Date.now(),
+    screenshotWidth: 1920,
+    screenshotHeight: 1080
+  }
+);
+```
+
+<Note>
+Screenshot generation is defined in `packages/convex/linkMetadata.ts:154-214`.
+</Note>
+
+## URL Normalization
+
+URLs are normalized before fetching:
+
+```typescript
+import { normalizeUrl } from "@teak/convex/linkMetadata/url";
+
+const normalized = normalizeUrl("HTTPS://EXAMPLE.COM/Path?utm_source=twitter");
+// Result: "https://example.com/Path"
+```
+
+### Normalization Rules
+
+- Convert to lowercase domain
+- Remove tracking parameters (`utm_*`, `fbclid`, etc.)
+- Remove trailing slashes
+- Preserve query parameters (except tracking)
+- Preserve fragments (`#hash`)
+
+<Tip>
+Normalization prevents duplicate cards for the same logical URL.
+</Tip>
+
+## Error Handling
+
+Metadata fetching can fail for various reasons:
+
+### Failure Modes
+
+| Status | Cause | Metadata Structure |
+| ------ | ----- | ------------------ |
+| `failed` | Network error | `{ linkPreview: { status: "failed" } }` |
+| `failed` | Invalid HTML | `{ linkPreview: { status: "failed" } }` |
+| `failed` | No metadata found | `{ linkPreview: { status: "failed" } }` |
+
+### Retry Configuration
+
+```typescript
+const LINK_METADATA_STEP_RETRY = {
+  maxAttempts: 5,
+  initialBackoffMs: 5000,
+  base: 2
+};
+```
+
+<Note>
+Retries use exponential backoff: 5s, 10s, 20s, 40s, 80s.
+</Note>
+
+## Text Sanitization
+
+All extracted text is sanitized:
+
+```typescript
+import { sanitizeText } from "@teak/convex/linkMetadata/parsing";
+
+const clean = sanitizeText("  Title\n\n  with   whitespace  ");
+// Result: "Title with whitespace"
+```
+
+### Sanitization Rules
+
+- Decode HTML entities (`&amp;` → `&`)
+- Normalize whitespace (multiple spaces → single space)
+- Trim leading/trailing whitespace
+- Remove control characters
+- Limit length (titles: 500 chars, descriptions: 2000 chars)
+
+## Provider-Specific Handling
+
+Teak has special handling for certain domains:
+
+### Instagram
+
+Instagram links get enhanced metadata extraction:
+
+```typescript
+import { extractInstagramMetadata } from "@teak/convex/linkMetadata/instagram";
+
+const metadata = extractInstagramMetadata(html);
+// Extracts: username, post type, media URLs
+```
+
+<Note>
+Provider-specific extractors are in `packages/convex/linkMetadata/` directory.
+</Note>
+
+## Metadata Status Tracking
+
+Cards track metadata fetch status:
+
+```typescript
+interface Card {
+  metadataStatus?: "pending" | "completed" | "failed";
+  metadataTitle?: string;        // For search index
+  metadataDescription?: string;  // For search index
+  metadata?: {
+    linkPreview?: LinkPreview;
+  };
+}
+```
+
+### Querying Status
+
+```typescript
+const card = useQuery(api.cards.getCard, { cardId });
+
+if (card?.metadataStatus === "pending") {
+  return <Spinner>Fetching preview...</Spinner>;
+}
+
+if (card?.metadataStatus === "failed") {
+  return <Alert>Failed to load preview</Alert>;
+}
+
+return <LinkPreview {...card.metadata.linkPreview} />;
+```
+
+## Manual Refresh
+
+To re-fetch metadata for a card:
+
+```typescript
+// Delete existing card and recreate
+// OR
+// Manually trigger workflow (requires internal mutation)
+await ctx.runAction(
+  internal.workflows.steps.linkMetadata.fetchMetadata.fetchMetadata,
+  { cardId }
+);
+```
+
+<Warning>
+Manual refresh is not exposed via public API yet.
+</Warning>
+
+## Best Practices
+
+<Steps>
+  <Step title="Provide Clean URLs">
+    Remove tracking parameters before creating cards:
+
+    ```typescript
+    import { normalizeUrl } from "@teak/convex/linkMetadata/url";
+
+    const cleanUrl = normalizeUrl(url);
+    await createCard({ url: cleanUrl });
+    ```
+  </Step>
+
+  <Step title="Handle Missing Metadata Gracefully">
+    ```typescript
+    const title = card.metadataTitle || card.url || "Untitled Link";
+    const description = card.metadataDescription || "No description available";
+    ```
+  </Step>
+
+  <Step title="Show Loading States">
+    Display placeholders while metadata fetches:
+
+    ```typescript
+    {card.metadataStatus === "pending" && <Skeleton />}
+    ```
+  </Step>
+</Steps>
+
+## Source Reference
+
+- Update handler: `packages/convex/linkMetadata.ts:31-152`
+- Screenshot handler: `packages/convex/linkMetadata.ts:154-214`
+- Parsing logic: `packages/convex/linkMetadata/parsing.ts`
+- Selectors: `packages/convex/linkMetadata/selectors.ts`
+- URL normalization: `packages/convex/linkMetadata/url.ts`

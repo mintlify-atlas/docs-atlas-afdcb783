@@ -1,0 +1,283 @@
+---
+title: Web App
+description: The Next.js web application for Teak - your personal knowledge hub in the browser
+icon: globe
+---
+
+The Teak web app is a modern, full-featured Next.js application that serves as the primary interface for managing your personal knowledge hub.
+
+## Overview
+
+Built with Next.js 16 and React 19, the web app provides a responsive, real-time interface for collecting, organizing, and rediscovering your ideas and inspirations.
+
+<CardGroup cols={2}>
+  <Card title="Technology Stack" icon="code">
+    - Next.js 16.1.6 (App Router)
+    - React 19.2.4
+    - Convex for real-time backend
+    - Better Auth for authentication
+  </Card>
+  <Card title="UI Framework" icon="palette">
+    - Tailwind CSS 4
+    - shadcn/ui components
+    - Ant Design components
+    - Lucide React icons
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Real-Time Synchronization
+
+The web app uses Convex for real-time data synchronization, ensuring your cards are always up-to-date across all devices.
+
+```typescript
+import { useQuery } from "@teak/convex";
+import { api } from "@teak/convex";
+
+// Real-time cached queries via ConvexQueryCacheProvider
+const cards = useQuery(api.cards.list);
+```
+
+### Card Management
+
+<Steps>
+  <Step title="Create Cards">
+    Add cards through multiple methods:
+    - Direct text input
+    - URL saving with automatic metadata extraction
+    - File uploads (images, videos, audio, documents)
+    - Drag-and-drop interface
+  </Step>
+  <Step title="Organize">
+    Use tags, favorites, and AI-powered categorization to keep your knowledge organized.
+  </Step>
+  <Step title="Search & Rediscover">
+    Powerful search with AI-generated summaries and metadata to quickly find what you need.
+  </Step>
+</Steps>
+
+### Advanced Capabilities
+
+<AccordionGroup>
+  <Accordion title="Image Processing">
+    - EXIF data extraction
+    - Color palette detection
+    - Image optimization with @cf-wasm/photon
+    - Thumbnail generation
+  </Accordion>
+  <Accordion title="Media Support">
+    - Video uploads and previews
+    - Audio file support
+    - Document handling
+    - Automatic media transcription
+  </Accordion>
+  <Accordion title="Link Metadata">
+    - Automatic URL metadata extraction
+    - Open Graph data parsing
+    - Preview generation
+    - Duplicate detection
+  </Accordion>
+</AccordionGroup>
+
+## Installation & Setup
+
+### Prerequisites
+
+- Node.js 18+ or Bun
+- A Convex account for the backend
+- Better Auth configured
+
+### Development
+
+<CodeGroup>
+
+```bash Development Server
+# Install dependencies
+bun install
+
+# Start web app + Convex backend
+bun run dev
+
+# Or start web app only
+bun run dev:web
+```
+
+```bash Production Build
+# Build for production
+bun run build
+
+# Start production server
+bun run start
+```
+
+```bash Testing
+# Run tests
+bun run test
+
+# Run E2E tests with Playwright
+bun run test:e2e
+
+# Type checking
+bun run typecheck
+```
+
+</CodeGroup>
+
+### Environment Configuration
+
+Create a `.env.local` file in the web app directory:
+
+```bash
+NEXT_PUBLIC_CONVEX_URL=your_convex_deployment_url
+BETTER_AUTH_SECRET=your_auth_secret
+BETTER_AUTH_URL=http://localhost:3000
+
+# Optional: Analytics
+NEXT_PUBLIC_VERCEL_ANALYTICS_ID=your_analytics_id
+
+# Optional: Sentry
+SENTRY_DSN=your_sentry_dsn
+```
+
+## Platform-Specific Features
+
+### Desktop Auth Integration
+
+The web app includes a special authentication flow for the Tauri desktop app:
+
+```typescript
+// apps/web/src/app/desktop/auth/complete/page.tsx
+// Handles OAuth callback for desktop app
+```
+
+### Command Palette
+
+Keyboard-first navigation using `cmdk`:
+
+<Card title="Keyboard Shortcuts" icon="keyboard">
+  - `Cmd/Ctrl + K` - Open command palette
+  - Quick navigation to cards, settings, and actions
+  - Fast card creation and search
+</Card>
+
+### Masonry Grid Layout
+
+Responsive masonry grid for displaying cards of varying sizes and types:
+
+- Optimized for performance with virtualization
+- Drag-and-drop reordering
+- Responsive breakpoints
+
+### Global Drag & Drop
+
+Drag files directly from your desktop to create cards:
+
+```typescript
+import { useGlobalDragDrop } from "@/hooks/use-global-drag-drop";
+
+// Enable global drag-and-drop anywhere in the app
+useGlobalDragDrop();
+```
+
+## Technology Details
+
+### React Compiler
+
+The web app uses the experimental React Compiler for optimized performance:
+
+```json
+{
+  "devDependencies": {
+    "babel-plugin-react-compiler": "^1.0.0"
+  }
+}
+```
+
+### Image Optimization
+
+Utilizes Cloudflare's WebAssembly Photon library for client-side image processing:
+
+- Fast client-side resizing
+- Color palette extraction
+- EXIF data preservation
+
+### Analytics
+
+Integrated with Vercel Analytics for performance monitoring and user insights.
+
+### Error Tracking
+
+Sentry integration for comprehensive error tracking and monitoring:
+
+```typescript
+import * as Sentry from "@sentry/nextjs";
+```
+
+## Architecture
+
+### App Router Structure
+
+```
+app/
+├── (auth)/           # Authentication pages
+│   ├── login/
+│   ├── register/
+│   └── forgot-password/
+├── (settings)/       # Settings pages
+│   ├── settings/
+│   └── admin/
+├── desktop/          # Desktop app integration
+│   └── auth/
+└── page.tsx          # Main cards view
+```
+
+### Component Organization
+
+- **UI Components**: shadcn/ui components in `components/ui/`
+- **Card Components**: `CardModal`, `CardItem`, `AddCardForm`
+- **Layout Components**: `MasonryGrid`, `DragOverlay`
+- **Search**: `SearchBar` with real-time filtering
+
+### Hooks
+
+- `useCardActions` - Card CRUD operations
+- `useCardModal` - Card detail modal state
+- `useGlobalDragDrop` - Global drag-and-drop handling
+
+## Deployment
+
+The web app is optimized for deployment on Vercel:
+
+<Steps>
+  <Step title="Connect Repository">
+    Connect your GitHub repository to Vercel
+  </Step>
+  <Step title="Configure Environment">
+    Add environment variables in the Vercel dashboard
+  </Step>
+  <Step title="Deploy">
+    Vercel automatically builds and deploys on push to main
+  </Step>
+</Steps>
+
+<Note>
+The web app requires a deployed Convex backend. Deploy Convex first, then configure the web app with the Convex deployment URL.
+</Note>
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Backend" icon="server" href="/development/backend">
+    Learn about the Convex backend architecture
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/development/architecture">
+    Understand the system architecture
+  </Card>
+  <Card title="Next.js" icon="arrow-up-right-from-square" href="https://nextjs.org/docs">
+    Official Next.js documentation
+  </Card>
+  <Card title="Convex" icon="arrow-up-right-from-square" href="https://docs.convex.dev">
+    Official Convex documentation
+  </Card>
+</CardGroup>

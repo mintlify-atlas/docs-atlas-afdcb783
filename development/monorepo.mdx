@@ -1,0 +1,417 @@
+---
+title: Monorepo Structure
+description: Understanding Teak's Turborepo workspace architecture
+---
+
+Teak uses Turborepo to manage a monorepo containing multiple apps and shared packages, enabling efficient development and builds across the entire codebase.
+
+## Workspace Overview
+
+The repository is organized into workspaces defined in the root `package.json`:
+
+```json package.json
+{
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
+```
+
+### Directory Structure
+
+```text
+teak/
+├── apps/
+│   ├── web/         # Next.js frontend (app router, shadcn/ui)
+│   ├── mobile/      # Expo React Native mobile app
+│   ├── desktop/     # Tauri v2 desktop app (Rust + React)
+│   ├── extension/   # Chrome extension (Wxt)
+│   ├── raycast/     # Raycast extension
+│   └── docs/        # Documentation site (Fumadocs)
+├── packages/
+│   ├── convex/      # Convex backend (functions, workflows, schema)
+│   └── ui/          # Shared UI components package
+├── turbo.json       # Turborepo pipeline configuration
+└── package.json     # Root package with workspace definitions
+```
+
+## Apps
+
+Each app is a standalone application that can be developed and deployed independently.
+
+### Web (`apps/web/`)
+
+**Next.js web application**
+
+- **Framework**: Next.js 15 with App Router
+- **UI Library**: shadcn/ui components
+- **Styling**: Tailwind CSS
+- **Key directories**:
+  - `src/app/(auth)/` - Authentication routes
+  - `src/app/(settings)/` - Settings and admin pages
+  - `src/components/` - React components
+  - `src/lib/` - Utility functions and hooks
+- **Dev command**: `bun run dev:web`
+- **Build output**: `.next/`
+
+### Mobile (`apps/mobile/`)
+
+**Expo React Native mobile app**
+
+- **Framework**: Expo with React Native
+- **Key directories**:
+  - `app/(auth)/` - Authentication flows
+  - `app/(tabs)/` - Tab-based navigation
+  - `components/` - React Native components
+  - `lib/hooks/` - Custom React hooks
+- **Dev command**: `bun run dev:mobile`
+- **Platforms**: iOS and Android
+
+### Desktop (`apps/desktop/`)
+
+**Tauri v2 desktop application**
+
+- **Frontend**: React + Vite
+- **Backend**: Rust (Tauri)
+- **Key directories**:
+  - `src/` - React frontend components
+  - `src-tauri/` - Rust backend (commands, permissions)
+  - `vite.config.ts` - Vite configuration
+  - `tauri.conf.json` - Tauri configuration
+- **Dev command**: `bun run dev:desktop`
+- **Requirements**: Rust toolchain
+
+### Extension (`apps/extension/`)
+
+**Browser extension built with Wxt**
+
+- **Framework**: Wxt (Web Extension Toolkit)
+- **Key files**:
+  - `src/background.ts` - Background service worker
+  - `src/content.tsx` - Content scripts
+  - `src/popup.tsx` - Extension popup UI
+- **Dev command**: `bun run dev:extension`
+- **Build command**: `bun run build:extension`
+- **Output**: `dist/` directory
+
+### Raycast (`apps/raycast/`)
+
+**Raycast extension**
+
+- **Framework**: Raycast API
+- **Dev command**: `bun run dev:raycast`
+- **Build command**: `bun run build:raycast`
+- **Publish command**: `bun run publish:raycast`
+
+### Docs (`apps/docs/`)
+
+**Documentation site**
+
+- **Framework**: Next.js with Fumadocs
+- **Content**: MDX files in `content/docs/`
+- **Key directories**:
+  - `app/(home)/` - Homepage
+  - `app/docs/[[...slug]]/` - Documentation pages
+  - `content/docs/` - MDX content
+  - `components/` - Custom components
+- **Dev command**: `bun run dev:docs`
+- **URL**: `http://localhost:3001`
+
+## Packages
+
+Shared packages used across multiple apps.
+
+### Convex (`packages/convex/`)
+
+**Backend-as-a-Service with Convex**
+
+- **Purpose**: Backend functions, database schema, workflows, and shared utilities
+- **Key directories**:
+  - `_generated/` - Auto-generated Convex types and API
+  - `workflows/` - Convex workflows (card processing, link metadata)
+  - `ai/` - AI processing functions
+  - `card/` - Card-related functions
+  - `shared/` - Shared utilities, constants, and hooks
+- **Key files**:
+  - `schema.ts` - Database schema definitions
+  - `convex.config.ts` - Convex configuration
+  - `auth.config.ts` - Better Auth configuration
+  - `crons.ts` - Scheduled functions
+  - `index.ts` - Main entry point
+- **Dev command**: `bun run dev:convex`
+- **Import alias**: `@teak/convex`
+
+<Note>
+  The Convex package is imported by all client apps and provides the unified backend API.
+</Note>
+
+### UI (`packages/ui/`)
+
+**Shared UI components package**
+
+- **Purpose**: Reusable UI components across apps
+- **Import alias**: `@teak/ui`
+
+## Turborepo Pipeline
+
+Turborepo orchestrates task execution across the monorepo using `turbo.json`.
+
+### Configuration
+
+```json turbo.json
+{
+  "$schema": "https://turborepo.dev/schema.v2.json",
+  "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
+  "globalPassThroughEnv": ["CI", "GITHUB_ACTIONS"],
+  "remoteCache": {
+    "enabled": true
+  }
+}
+```
+
+### Task Pipeline
+
+<Tabs>
+  <Tab title="build">
+    ```json
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env", ".env.*"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", ".output/**"],
+      "env": [
+        "NEXT_PUBLIC_*",
+        "CONVEX_*",
+        "EXPO_PUBLIC_*",
+        "SENTRY_*",
+        "POLAR_*"
+      ]
+    }
+    ```
+
+    - **Dependencies**: Builds dependencies first (`^build`)
+    - **Inputs**: Source files, environment files
+    - **Outputs**: `.next/`, `dist/`, `.output/`
+    - **Environment**: Exposes required env vars
+  </Tab>
+
+  <Tab title="dev">
+    ```json
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+    ```
+
+    - **No caching**: Dev servers always run fresh
+    - **Persistent**: Keeps running until stopped
+  </Tab>
+
+  <Tab title="lint">
+    ```json
+    "lint": {
+      "dependsOn": ["^transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/biome.jsonc"],
+      "outputs": []
+    }
+    ```
+
+    - **Dependencies**: Waits for transit tasks
+    - **Inputs**: Source files and Biome config
+  </Tab>
+
+  <Tab title="typecheck">
+    ```json
+    "typecheck": {
+      "dependsOn": ["^transit"],
+      "outputs": []
+    }
+    ```
+
+    - **Dependencies**: Waits for transit tasks
+    - **Fast**: No outputs to cache
+  </Tab>
+
+  <Tab title="test">
+    ```json
+    "test": {
+      "dependsOn": ["^transit"],
+      "inputs": ["$TURBO_DEFAULT$", ".env", ".env.*"],
+      "outputs": ["coverage/**"],
+      "env": ["CLAUDECODE", "AGENT"]
+    }
+    ```
+
+    - **Dependencies**: Waits for transit tasks
+    - **Outputs**: Coverage reports
+  </Tab>
+</Tabs>
+
+### Running Tasks
+
+<CodeGroup>
+  ```bash All Workspaces
+  bun run build
+  bun run lint
+  bun run test
+  ```
+
+  ```bash Specific Workspace
+  turbo run build --filter=@teak/web
+  turbo run dev --filter=@teak/mobile
+  ```
+
+  ```bash Multiple Workspaces
+  turbo watch dev --filter=@teak/web --filter=@teak/convex
+  ```
+</CodeGroup>
+
+### Watch Mode
+
+Many dev commands use `turbo watch` for hot reloading:
+
+```bash
+# Watch web + convex
+turbo watch dev --filter=@teak/web --filter=@teak/convex
+
+# Watch all workspaces
+turbo watch dev
+```
+
+## Dependency Management
+
+### Package Overrides
+
+The root `package.json` enforces specific versions:
+
+```json
+"overrides": {
+  "convex": "1.32.0",
+  "convex-helpers": "0.1.112",
+  "@types/react": "19.2.10",
+  "@types/react-dom": "19.2.3"
+}
+```
+
+This ensures all workspaces use compatible versions.
+
+### Adding Dependencies
+
+<CodeGroup>
+  ```bash Workspace Specific
+  bun add <package> --filter @teak/web
+  bun add --dev <package> --filter @teak/convex
+  ```
+
+  ```bash Root Level
+  bun add --dev <package>
+  ```
+</CodeGroup>
+
+### TypeScript Paths
+
+Workspaces can import shared packages using aliases:
+
+```typescript
+// Import from Convex package
+import { api } from "@teak/convex";
+import { Doc } from "@teak/convex/_generated/dataModel";
+import { CARD_TYPES } from "@teak/convex/shared/constants";
+
+// Import from UI package
+import { Button } from "@teak/ui";
+```
+
+## Caching and Performance
+
+### Remote Caching
+
+Turborepo can cache build outputs remotely (enabled by default):
+
+```json
+"remoteCache": {
+  "enabled": true
+}
+```
+
+Benefits:
+- Skip rebuilding unchanged packages
+- Share cache across team members
+- Faster CI/CD pipelines
+
+### Local Cache
+
+Cache stored in:
+- `node_modules/.cache/turbo/`
+- `.turbo/` directories in each workspace
+
+### Clear Cache
+
+```bash
+bun run clean
+```
+
+This removes:
+- Turbo daemon
+- `node_modules/.cache`
+- All `.turbo` directories
+
+## Development Workflows
+
+### Full Stack Development
+
+```bash
+# Web app + backend
+bun run dev
+
+# All services
+bun run dev:all
+```
+
+### Backend-Only Development
+
+```bash
+bun run dev:convex
+```
+
+### Multi-Platform Development
+
+```bash
+# Terminal 1: Web
+bun run dev:web
+
+# Terminal 2: Mobile
+bun run dev:mobile
+
+# Terminal 3: Desktop
+bun run dev:desktop
+```
+
+## Pre-commit Hooks
+
+The `simple-git-hooks` package runs tasks before commits:
+
+```json package.json
+"simple-git-hooks": {
+  "pre-commit": "bun run pre-commit"
+}
+```
+
+The `pre-commit` script runs:
+
+```bash
+turbo run typecheck lint build --affected
+```
+
+Only affected packages are checked, keeping commits fast.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Local Setup" icon="laptop-code" href="/development/setup">
+    Set up your local development environment
+  </Card>
+  <Card title="Convex Backend" icon="database" href="/development/backend">
+    Learn about the Convex backend architecture
+  </Card>
+</CardGroup>

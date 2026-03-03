@@ -1,0 +1,398 @@
+---
+title: Searching
+description: Master Teak's full-text search across content, tags, metadata, and AI-generated fields
+---
+
+## Overview
+
+Teak's search system queries multiple fields simultaneously using Convex's full-text search indexes, providing instant results across your entire knowledge base.
+
+## Search Fields
+
+Every search query looks across these fields:
+
+| Field | Description | Index |
+| ----- | ----------- | ----- |
+| `content` | Main card content | `search_content` |
+| `notes` | User notes | `search_notes` |
+| `metadataTitle` | Link preview title | `search_metadata_title` |
+| `metadataDescription` | Link preview description | `search_metadata_description` |
+| `aiSummary` | AI-generated summary | `search_ai_summary` |
+| `aiTranscript` | Audio/video transcript | `search_ai_transcript` |
+| `tags` | User tags (array) | `search_tags` |
+| `aiTags` | AI tags (array) | `search_ai_tags` |
+
+<Note>
+All searches are case-insensitive and use Convex's built-in tokenization.
+</Note>
+
+## Basic Search
+
+```typescript
+import { api } from "@teak/convex";
+import { useQuery } from "convex/react";
+
+function SearchExample() {
+  const results = useQuery(api.card.getCards.searchCards, {
+    searchQuery: "design inspiration",
+    limit: 50
+  });
+
+  return (
+    <div>
+      {results?.map(card => (
+        <div key={card._id}>{card.content}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Search Syntax
+
+### Simple Terms
+
+Space-separated terms are treated as multiple keywords:
+
+```typescript
+// Finds cards containing "react" OR "typescript"
+{ searchQuery: "react typescript" }
+```
+
+### Phrase Search
+
+Use quotes for exact phrases:
+
+```typescript
+// Finds cards containing the exact phrase "design system"
+{ searchQuery: '"design system"' }
+```
+
+### Partial Matching
+
+Teak uses partial token matching:
+
+```typescript
+// "dark" matches "dark-mode", "darkness", "dark theme"
+{ searchQuery: "dark" }
+```
+
+## Special Keywords
+
+Teak recognizes special search shortcuts:
+
+<Tabs items={['Favorites', 'Trash', 'Usage']}>
+  <Tab value="Favorites">
+    Search for favorites using these keywords:
+
+    ```typescript
+    "fav"
+    "favs"
+    "favorites"
+    "favourite"
+    "favourites"
+    ```
+
+    ```typescript
+    const results = useQuery(api.card.getCards.searchCards, {
+      searchQuery: "favorites"
+    });
+    // Returns all favorited cards
+    ```
+  </Tab>
+
+  <Tab value="Trash">
+    Search trash with these keywords:
+
+    ```typescript
+    "trash"
+    "deleted"
+    "bin"
+    "recycle"
+    "trashed"
+    ```
+
+    ```typescript
+    const results = useQuery(api.card.getCards.searchCards, {
+      searchQuery: "trash"
+    });
+    // Returns all deleted cards
+    ```
+  </Tab>
+
+  <Tab value="Usage">
+    Special keywords bypass normal search and use optimized indexes:
+
+    ```typescript
+    // These are equivalent
+    { searchQuery: "favorites" }
+    { favoritesOnly: true }
+
+    // These are equivalent
+    { searchQuery: "trash" }
+    { showTrashOnly: true }
+    ```
+  </Tab>
+</Tabs>
+
+## Search with Filters
+
+Combine search with type, visual, and time filters:
+
+```typescript
+const results = useQuery(api.card.getCards.searchCards, {
+  searchQuery: "react hooks",
+  types: ["link", "text"],
+  favoritesOnly: false,
+  styleFilters: ["minimal"],
+  createdAtRange: {
+    start: Date.now() - 30 * 24 * 60 * 60 * 1000,
+    end: Date.now()
+  },
+  limit: 50
+});
+```
+
+## Search Performance
+
+### Query Batching
+
+Teak uses a batched approach to optimize search performance:
+
+<Steps>
+  <Step title="Batch 1: High-Selectivity Fields">
+    ```typescript
+    // Most selective searches run first
+    - search_content
+    - search_metadata_title
+    - search_notes
+    ```
+  </Step>
+
+  <Step title="Batch 2: Medium-Selectivity Fields">
+    ```typescript
+    // Metadata and AI fields
+    - search_metadata_description
+    - search_ai_summary (for applicable types)
+    - search_ai_transcript (for audio/video)
+    ```
+  </Step>
+
+  <Step title="Batch 3: Low-Selectivity Fields">
+    ```typescript
+    // Tag searches (less selective)
+    - search_tags
+    - search_ai_tags
+    ```
+  </Step>
+
+  <Step title="Early Termination">
+    If enough results are found in batch 1, batches 2 and 3 are skipped.
+  </Step>
+</Steps>
+
+<Note>
+See `packages/convex/card/getCards.ts:533-627` for the batching implementation.
+</Note>
+
+### Type-Specific Optimization
+
+When filtering by type, Teak skips irrelevant indexes:
+
+```typescript
+// When searching only audio cards
+{
+  searchQuery: "interview",
+  types: ["audio"]
+}
+// Skips: search_metadata_title, search_metadata_description
+// Includes: search_ai_transcript (audio-specific)
+```
+
+| Type Filter | Skipped Indexes |
+| ----------- | --------------- |
+| `["audio"]` | Link metadata fields |
+| `["text", "quote"]` | AI transcript, link metadata |
+| `["palette"]` | All AI fields |
+
+## Deduplication
+
+Cards matching multiple search fields appear only once:
+
+```typescript
+// Card with content="React hooks" and tag="react"
+// Appears once in results, not twice
+const results = await searchCards({ searchQuery: "react" });
+```
+
+<Tip>
+Results are deduplicated by `_id` using a `Map` structure for O(1) lookups.
+</Tip>
+
+## Pagination
+
+For large result sets, use paginated search:
+
+```typescript
+import { usePaginatedQuery } from "convex/react";
+
+function PaginatedSearch() {
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.card.getCards.searchCardsPaginated,
+    {
+      searchQuery: "design",
+      types: ["image", "link"]
+    },
+    { initialNumItems: 50 }
+  );
+
+  return (
+    <div>
+      {results.map(card => <Card key={card._id} {...card} />)}
+      {status === "CanLoadMore" && (
+        <button onClick={() => loadMore(50)}>Load More</button>
+      )}
+    </div>
+  );
+}
+```
+
+### Pagination Internals
+
+Paginated search uses offset-based cursors:
+
+```typescript
+// First page
+{ cursor: null, numItems: 50 }
+// Returns: { page: [...], continueCursor: "50", isDone: false }
+
+// Second page
+{ cursor: "50", numItems: 50 }
+// Returns: { page: [...], continueCursor: "100", isDone: false }
+```
+
+<Note>
+See `packages/convex/card/getCards.ts:400-747` for pagination logic.
+</Note>
+
+## Search Examples
+
+<Tabs items={['Content', 'Tags', 'AI Fields', 'Combined']}>
+  <Tab value="Content">
+    ```typescript
+    // Find all cards mentioning "TypeScript"
+    const results = useQuery(api.card.getCards.searchCards, {
+      searchQuery: "typescript"
+    });
+    ```
+  </Tab>
+
+  <Tab value="Tags">
+    ```typescript
+    // Find cards tagged with "work" or "project"
+    const results = useQuery(api.card.getCards.searchCards, {
+      searchQuery: "work project"
+    });
+    ```
+  </Tab>
+
+  <Tab value="AI Fields">
+    ```typescript
+    // Search AI-generated summaries and transcripts
+    const results = useQuery(api.card.getCards.searchCards, {
+      searchQuery: "machine learning",
+      types: ["video", "audio", "link"] // Types with AI summaries
+    });
+    ```
+  </Tab>
+
+  <Tab value="Combined">
+    ```typescript
+    // Complex multi-field search
+    const results = useQuery(api.card.getCards.searchCards, {
+      searchQuery: "react performance optimization",
+      types: ["link", "video"],
+      favoritesOnly: true,
+      createdAtRange: {
+        start: Date.now() - 90 * 24 * 60 * 60 * 1000,
+        end: Date.now()
+      }
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Empty Search
+
+Omitting `searchQuery` returns filtered cards in creation order:
+
+```typescript
+// Get all image cards, newest first
+const images = useQuery(api.card.getCards.searchCards, {
+  types: ["image"],
+  limit: 50
+});
+```
+
+<Tip>
+Use empty search with filters to browse cards by type, style, or color.
+</Tip>
+
+## Search Limitations
+
+<Warning>
+  **No fuzzy matching**: Searches are exact token matches. "reactjs" won't match "react".
+</Warning>
+
+<Warning>
+  **No boolean operators**: AND/OR/NOT operators are not supported. Use filters instead.
+</Warning>
+
+<Note>
+Convex search uses Tantivy's tokenization. See [Convex search docs](https://docs.convex.dev/text-search) for details.
+</Note>
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Specific Terms">
+    Shorter, specific terms match more accurately:
+
+    ```typescript
+    // Good
+    { searchQuery: "react hooks" }
+
+    // Less effective
+    { searchQuery: "how to use react hooks in functional components" }
+    ```
+  </Step>
+
+  <Step title="Combine with Type Filters">
+    Narrow search space for faster results:
+
+    ```typescript
+    {
+      searchQuery: "design",
+      types: ["image", "link"] // Reduces search space
+    }
+    ```
+  </Step>
+
+  <Step title="Use Pagination for Large Sets">
+    Load results incrementally for better UX:
+
+    ```typescript
+    usePaginatedQuery(
+      api.card.getCards.searchCardsPaginated,
+      { searchQuery: query },
+      { initialNumItems: 50 }
+    );
+    ```
+  </Step>
+</Steps>
+
+## Source Reference
+
+- Search implementation: `packages/convex/card/getCards.ts:96-398`
+- Paginated search: `packages/convex/card/getCards.ts:400-747`
+- Search indexes: `packages/convex/schema.ts`

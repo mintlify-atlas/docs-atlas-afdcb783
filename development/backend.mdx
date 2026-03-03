@@ -1,0 +1,551 @@
+---
+title: Convex Backend
+description: Understanding and developing with Teak's Convex backend
+---
+
+Teak uses Convex as its backend-as-a-service, providing real-time database, serverless functions, workflows, and authentication in a type-safe package.
+
+## Overview
+
+The Convex backend is located in `packages/convex/` and serves as the unified backend for all Teak apps (web, mobile, desktop, extension).
+
+### Key Features
+
+- **Real-time Database**: Reactive queries with automatic subscriptions
+- **Type Safety**: Auto-generated TypeScript types from schema
+- **Hot Reloading**: Functions deploy instantly on save
+- **Workflows**: Multi-step processes with retries and error handling
+- **Authentication**: Better Auth integration with session management
+- **File Storage**: Built-in file storage for media assets
+- **Scheduled Functions**: Cron jobs and delayed execution
+
+## Configuration
+
+The Convex backend is configured in `packages/convex/convex.config.ts`:
+
+```typescript convex.config.ts
+import betterAuth from "@convex-dev/better-auth/convex.config";
+import migrations from "@convex-dev/migrations/convex.config";
+import polar from "@convex-dev/polar/convex.config";
+import ratelimiter from "@convex-dev/ratelimiter/convex.config";
+import resend from "@convex-dev/resend/convex.config";
+import workflow from "@convex-dev/workflow/convex.config";
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(betterAuth);
+app.use(polar);
+app.use(migrations);
+app.use(workflow);
+app.use(resend);
+app.use(ratelimiter);
+
+export default app;
+```
+
+### Components Used
+
+- **`@convex-dev/better-auth`**: Authentication with Better Auth
+- **`@convex-dev/polar`**: Polar billing integration
+- **`@convex-dev/migrations`**: Database migrations
+- **`@convex-dev/workflow`**: Multi-step workflows
+- **`@convex-dev/resend`**: Email sending via Resend
+- **`@convex-dev/ratelimiter`**: Rate limiting for API endpoints
+
+## Directory Structure
+
+```text
+packages/convex/
+├── _generated/          # Auto-generated types and API
+│   ├── api.ts          # Function references (api, internal)
+│   ├── dataModel.ts    # Schema types (Doc, Id)
+│   └── server.ts       # Server-side utilities
+├── workflows/           # Convex workflows
+│   ├── cardProcessing.ts
+│   ├── linkMetadata.ts
+│   └── functionRefs.ts
+├── ai/                  # AI processing functions
+├── card/                # Card-related functions
+├── shared/              # Shared utilities and constants
+│   ├── constants.ts
+│   ├── utils.ts
+│   └── hooks.ts
+├── schema.ts            # Database schema definition
+├── convex.config.ts     # Convex configuration
+├── auth.config.ts       # Better Auth configuration
+├── crons.ts             # Scheduled functions
+├── billing.ts           # Billing functions
+├── admin.ts             # Admin functions
+├── cards.ts             # Card queries and mutations
+└── index.ts             # Main entry point
+```
+
+## Development Workflow
+
+### Starting the Dev Server
+
+<CodeGroup>
+  ```bash Convex Only
+  bun run dev:convex
+  ```
+
+  ```bash With Web App
+  bun run dev:web
+  ```
+
+  ```bash All Services
+  bun run dev:all
+  ```
+</CodeGroup>
+
+The Convex dev server:
+- Watches for file changes
+- Hot deploys functions on save
+- Validates schema changes
+- Shows deployment logs in terminal
+
+<Note>
+  Convex functions are deployed instantly when you save files. No manual restart required!
+</Note>
+
+### Environment Variables
+
+Create a `.env` file in `packages/convex/`:
+
+```bash .env
+CONVEX_DEPLOYMENT=<your-deployment-name>
+POLAR_ACCESS_TOKEN=<your-polar-token>
+POLAR_SERVER=<polar-server-url>
+```
+
+### Hot Reloading
+
+Convex provides instant hot reloading:
+
+1. Edit any function in `packages/convex/`
+2. Save the file
+3. Convex automatically deploys the changes
+4. Connected clients receive updates in real-time
+
+<Steps>
+  <Step title="Edit Function">
+    Modify a query, mutation, or action in any `.ts` file
+  </Step>
+  
+  <Step title="Save File">
+    Press Cmd+S / Ctrl+S
+  </Step>
+  
+  <Step title="Automatic Deployment">
+    Watch terminal for deployment confirmation:
+    ```
+    [CONVEX] Deployed functions in 123ms
+    ```
+  </Step>
+  
+  <Step title="Real-time Updates">
+    Connected clients automatically receive the updated function behavior
+  </Step>
+</Steps>
+
+## Schema Management
+
+Define your database schema in `packages/convex/schema.ts`:
+
+```typescript schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  cards: defineTable({
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("text"),
+      v.literal("link"),
+      v.literal("image"),
+      v.literal("video"),
+      v.literal("audio"),
+      v.literal("document"),
+      v.literal("palette"),
+      v.literal("quote")
+    ),
+    title: v.optional(v.string()),
+    content: v.string(),
+    tags: v.optional(v.array(v.string())),
+    processingStatus: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_type", ["type"])
+    .index("by_user_and_type", ["userId", "type"]),
+});
+```
+
+### System Fields
+
+Convex automatically adds system fields to all documents:
+
+- `_id`: Unique document ID (type: `Id<"tableName">`)
+- `_creationTime`: Timestamp when document was created (type: `number`)
+
+### Indexes
+
+Define indexes for efficient queries:
+
+```typescript
+.index("by_user", ["userId"])
+.index("by_user_and_type", ["userId", "type"])
+```
+
+<Note>
+  Index fields must be queried in the same order they're defined. Create multiple indexes for different query patterns.
+</Note>
+
+### Schema Migrations
+
+When you change the schema:
+
+1. Convex validates the changes
+2. Incompatible changes require migrations
+3. Use `@convex-dev/migrations` for complex migrations
+4. Test migrations in development first
+
+## Client Integration
+
+All Teak apps use the Convex backend through shared providers and hooks.
+
+### Provider Setup
+
+Wrap your app with Convex providers:
+
+```tsx
+import { ConvexClientProvider } from "@teak/convex";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache";
+
+export default function App() {
+  return (
+    <ConvexClientProvider>
+      <ConvexQueryCacheProvider>
+        {/* Your app */}
+      </ConvexQueryCacheProvider>
+    </ConvexClientProvider>
+  );
+}
+```
+
+### Queries
+
+Use real-time queries with automatic caching:
+
+```typescript
+import { useQuery } from "convex-helpers/react/cache";
+import { api } from "@teak/convex";
+
+function CardList() {
+  const cards = useQuery(api.cards.list, { userId: "user_123" });
+  
+  if (!cards) return <div>Loading...</div>;
+  
+  return (
+    <div>
+      {cards.map(card => (
+        <Card key={card._id} data={card} />
+      ))}
+    </div>
+  );
+}
+```
+
+### Mutations
+
+Modify data with mutations:
+
+```typescript
+import { useMutation } from "@teak/convex";
+import { api } from "@teak/convex";
+
+function AddCard() {
+  const createCard = useMutation(api.cards.create);
+  
+  const handleSubmit = async (content: string) => {
+    await createCard({ content, type: "text" });
+  };
+  
+  return <form onSubmit={handleSubmit}>...</form>;
+}
+```
+
+### Actions
+
+Run server-side actions (Node.js runtime):
+
+```typescript
+import { useAction } from "@teak/convex";
+import { api } from "@teak/convex";
+
+function ProcessCard() {
+  const processCard = useAction(api.ai.processCard);
+  
+  const handleProcess = async (cardId: string) => {
+    await processCard({ cardId });
+  };
+  
+  return <button onClick={handleProcess}>Process</button>;
+}
+```
+
+## Imports and Types
+
+Convex auto-generates TypeScript types:
+
+```typescript
+// Function references
+import { api } from "@teak/convex";
+import { internal } from "@teak/convex/_generated/api";
+
+// Document types
+import { Doc, Id } from "@teak/convex/_generated/dataModel";
+
+// Shared constants
+import { CARD_TYPES } from "@teak/convex/shared/constants";
+
+// Example usage
+type Card = Doc<"cards">;
+type CardId = Id<"cards">;
+```
+
+## Workflows
+
+Teak uses Convex workflows for complex multi-step processes.
+
+### Card Processing Pipeline
+
+Defined in `packages/convex/workflows/cardProcessing.ts`:
+
+```typescript
+import { defineWorkflow } from "@convex-dev/workflow";
+
+export const cardProcessingWorkflow = defineWorkflow({
+  name: "cardProcessing",
+  steps: [
+    {
+      name: "classification",
+      handler: async (ctx, { cardId }) => {
+        // Detect card type and extract palette colors
+        return await ctx.runMutation(internal.ai.classifyCard, { cardId });
+      },
+      retries: 3,
+    },
+    {
+      name: "categorization",
+      handler: async (ctx, { cardId }) => {
+        // Categorize links, wait for metadata
+        return await ctx.runMutation(internal.ai.categorizeCard, { cardId });
+      },
+      retries: 3,
+    },
+    {
+      name: "metadata",
+      handler: async (ctx, { cardId }) => {
+        // Generate AI tags, summary, transcript
+        return await ctx.runAction(internal.ai.generateMetadata, { cardId });
+      },
+      retries: 3,
+    },
+    {
+      name: "renderables",
+      handler: async (ctx, { cardId }) => {
+        // Generate media thumbnails
+        return await ctx.runMutation(internal.ai.generateRenderables, { cardId });
+      },
+      retries: 3,
+    },
+  ],
+});
+```
+
+### Workflow Features
+
+- **Per-step retries**: Each step can retry independently
+- **Error handling**: Failed steps don't crash the entire workflow
+- **Status tracking**: `processingStatus` field tracks progress
+- **Parallel execution**: Multiple workflows can run simultaneously
+
+### Link Metadata Workflow
+
+Defined in `packages/convex/workflows/linkMetadata.ts`:
+
+```typescript
+export const startLinkMetadataWorkflow = mutation({
+  args: { cardId: v.id("cards") },
+  handler: async (ctx, args) => {
+    // Fetch link metadata, OpenGraph data, etc.
+  },
+});
+```
+
+## Scheduled Functions
+
+Define cron jobs in `packages/convex/crons.ts`:
+
+```typescript
+import { cronJobs } from "convex/server";
+import { internal } from "./_generated/api";
+
+const crons = cronJobs();
+
+// Run cleanup every 6 hours
+crons.interval(
+  "cleanup-expired-sessions",
+  { hours: 6 },
+  internal.auth.cleanupSessions,
+  {}
+);
+
+// Run daily at 2 AM
+crons.cron(
+  "daily-backup",
+  "0 2 * * *",
+  internal.admin.backupData,
+  {}
+);
+
+export default crons;
+```
+
+## Authentication
+
+Teak uses Better Auth with Convex integration.
+
+### Auth Configuration
+
+Defined in `packages/convex/auth.config.ts`:
+
+```typescript
+import { betterAuth } from "@convex-dev/better-auth";
+
+export const auth = betterAuth({
+  // Better Auth configuration
+});
+```
+
+### Auth Flow
+
+1. User authenticates via Better Auth
+2. Session flows automatically to Convex
+3. All Convex functions receive authenticated context
+4. `ConvexClientProvider` handles auth state
+
+## File Storage
+
+Convex provides built-in file storage:
+
+```typescript
+import { mutation } from "./_generated/server";
+
+export const uploadFile = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    // Get file URL
+    const url = await ctx.storage.getUrl(args.storageId);
+    
+    // Get file metadata from _storage system table
+    const metadata = await ctx.db.system.get(args.storageId);
+    
+    return { url, metadata };
+  },
+});
+```
+
+### Storage Limits
+
+- Files must be under 1MB
+- Store as `Blob` objects
+- Convert to/from `ArrayBuffer` as needed
+
+## Polar Integration
+
+Billing integration with Polar:
+
+```typescript
+import { polar } from "@convex-dev/polar";
+
+// Polar component integration
+export const billingWebhook = httpAction(async (ctx, req) => {
+  // Handle Polar webhooks
+});
+```
+
+### Required Environment Variables
+
+```bash
+POLAR_ACCESS_TOKEN=<your-token>
+POLAR_SERVER=<server-url>
+```
+
+## Best Practices
+
+### Function Design
+
+- **Keep functions focused**: One responsibility per function
+- **Use internal functions**: Hide implementation details with `internalMutation`, `internalQuery`, `internalAction`
+- **Validate arguments**: Always define `args` and `returns` validators
+- **Handle errors**: Use try/catch and return meaningful error messages
+
+### Performance
+
+- **Use indexes**: Define indexes for all query patterns
+- **Minimize action calls**: Actions are slower than queries/mutations
+- **Batch operations**: Combine multiple operations when possible
+- **Paginate results**: Use `.paginate()` for large result sets
+
+### Type Safety
+
+```typescript
+import { Doc, Id } from "./_generated/dataModel";
+
+// Use specific types
+const userId: Id<"users"> = "user_123";
+const card: Doc<"cards"> = await ctx.db.get(cardId);
+
+// Don't use generic strings or any
+```
+
+### Testing
+
+- Write tests for all functions
+- Use deterministic test data
+- Keep tests fast
+- Avoid unnecessary network calls
+
+## Troubleshooting
+
+### Schema Changes Not Applying
+
+1. Check Convex dashboard for errors
+2. Verify schema syntax
+3. Run migrations if needed
+4. Restart dev server
+
+### Functions Not Deploying
+
+1. Check terminal for syntax errors
+2. Verify imports are correct
+3. Ensure validators are valid
+4. Check `.env` file for correct deployment URL
+
+### Type Errors
+
+1. Rebuild generated types: `bunx convex dev`
+2. Check TypeScript version compatibility
+3. Verify schema matches function arguments
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Local Setup" icon="laptop-code" href="/development/setup">
+    Get your development environment running
+  </Card>
+  <Card title="Monorepo Structure" icon="folder-tree" href="/development/monorepo">
+    Understand the workspace architecture
+  </Card>
+</CardGroup>

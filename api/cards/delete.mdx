@@ -1,0 +1,329 @@
+---
+title: Delete Card
+description: Permanently delete cards and associated files from storage
+---
+
+## permanentDeleteCard
+
+Permanently deletes a card and all associated files from storage. This operation is irreversible.
+
+<Note>
+  **Soft delete vs. permanent delete**: Teak supports soft deletion (trash/recycle bin) via the `updateCardField` mutation with `field: "delete"`. Use `permanentDeleteCard` only when you want to completely remove a card and free up storage space.
+</Note>
+
+<CodeGroup>
+
+```typescript React
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function DeleteCardButton({ cardId }: { cardId: Id<"cards"> }) {
+  const permanentDelete = useMutation(
+    api.card.deleteCard.permanentDeleteCard
+  );
+
+  const handleDelete = async () => {
+    const confirmed = confirm(
+      "Are you sure? This will permanently delete the card and cannot be undone."
+    );
+    
+    if (confirmed) {
+      await permanentDelete({ id: cardId });
+    }
+  };
+
+  return (
+    <button onClick={handleDelete} className="text-red-600">
+      Delete Permanently
+    </button>
+  );
+}
+```
+
+```typescript Node.js
+import { ConvexHttpClient } from "convex/browser";
+
+const client = new ConvexHttpClient(process.env.CONVEX_URL);
+
+// Permanently delete a card
+await client.mutation(api.card.deleteCard.permanentDeleteCard, {
+  id: "jd7x2k8p9q5r6s7t8u9v0w1x2y3z4"
+});
+
+console.log("Card permanently deleted");
+```
+
+```typescript Batch Delete
+// Permanently delete multiple cards
+const cardIds = ["card1_id", "card2_id", "card3_id"];
+
+for (const id of cardIds) {
+  await permanentDeleteCard({ id });
+}
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="id" type="Id<'cards'>" required>
+  The unique identifier of the card to permanently delete.
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="null">
+  Returns `null` on successful deletion. Throws an error if the operation fails.
+</ResponseField>
+
+### Behavior
+
+<AccordionGroup>
+  <Accordion title="Authorization Check">
+    Before deletion, the function verifies:
+    
+    1. **Authentication**: User must be logged in
+    2. **Existence**: Card must exist in the database
+    3. **Ownership**: Card must belong to the authenticated user
+    
+    If any check fails, an error is thrown and no deletion occurs.
+  </Accordion>
+  
+  <Accordion title="File Cleanup">
+    Automatically deletes associated files from Convex storage:
+    
+    - **Main file** (`fileId`): Original uploaded file (image, video, audio, document)
+    - **Thumbnail** (`thumbnailId`): Generated or custom thumbnail image
+    
+    Files are deleted via `ctx.storage.delete()`, which:
+    - Removes the file from storage immediately
+    - Invalidates all signed URLs for the file
+    - Frees up storage quota
+    
+    **Note**: Link preview images and screenshots stored in `metadata.linkPreview` are NOT automatically deleted. These are referenced by `imageStorageId` and `screenshotStorageId` but are not covered by the current implementation.
+  </Accordion>
+  
+  <Accordion title="Database Removal">
+    After file cleanup, the card document is permanently removed from the database:
+    
+    ```typescript
+    await ctx.db.delete("cards", args.id);
+    ```
+    
+    This operation:
+    - Removes the card from all indexes
+    - Makes the card ID invalid for future queries
+    - Cannot be undone or restored
+  </Accordion>
+  
+  <Accordion title="Idempotency">
+    The function is **not idempotent**:
+    
+    - First call: Deletes the card successfully
+    - Subsequent calls: Throw "Card not found" error
+    
+    If you need idempotent deletion, check if the card exists first:
+    
+    ```typescript
+    const card = await ctx.db.get("cards", cardId);
+    if (card) {
+      await permanentDeleteCard({ id: cardId });
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Error Handling
+
+<ResponseField name="User must be authenticated" type="Error">
+  Thrown when attempting to delete without an authenticated session.
+  
+  ```typescript
+  throw new Error("User must be authenticated");
+  ```
+</ResponseField>
+
+<ResponseField name="Card not found" type="Error">
+  Thrown when the card ID doesn't exist in the database.
+  
+  ```typescript
+  throw new Error("Card not found");
+  ```
+  
+  This can occur if:
+  - Card was already deleted
+  - Invalid card ID was provided
+  - Card was deleted by another concurrent operation
+</ResponseField>
+
+<ResponseField name="Not authorized to permanently delete this card" type="Error">
+  Thrown when the authenticated user doesn't own the card.
+  
+  ```typescript
+  throw new Error("Not authorized to permanently delete this card");
+  ```
+  
+  Cards can only be deleted by their owner (matched by `userId`).
+</ResponseField>
+
+### Best Practices
+
+<AccordionGroup>
+  <Accordion title="Soft Delete First">
+    Implement a two-step deletion flow:
+    
+    1. **First click**: Soft delete using `updateCardField({ field: "delete" })`
+       - Moves card to trash/recycle bin
+       - Allows user to restore if needed
+       - Sets `isDeleted: true` and `deletedAt: timestamp`
+    
+    2. **Second click** (from trash): Permanent delete using `permanentDeleteCard`
+       - Shows confirmation dialog
+       - Warns about irreversibility
+       - Completely removes card and files
+    
+    Example:
+    ```typescript
+    // Step 1: Soft delete
+    await updateCardField({ cardId, field: "delete" });
+    
+    // Later, from trash view
+    // Step 2: Permanent delete
+    const confirmed = confirm("Permanently delete? This cannot be undone.");
+    if (confirmed) {
+      await permanentDeleteCard({ id: cardId });
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Confirmation Dialog">
+    Always show a confirmation dialog before permanent deletion:
+    
+    ```typescript
+    const handlePermanentDelete = async () => {
+      const confirmed = window.confirm(
+        "Are you sure you want to permanently delete this card? " +
+        "This action cannot be undone and will free up storage space."
+      );
+      
+      if (!confirmed) return;
+      
+      try {
+        await permanentDeleteCard({ id: cardId });
+        toast.success("Card permanently deleted");
+      } catch (error) {
+        toast.error("Failed to delete card");
+      }
+    };
+    ```
+  </Accordion>
+  
+  <Accordion title="Batch Deletion">
+    When deleting multiple cards, handle errors gracefully:
+    
+    ```typescript
+    const deletedIds: string[] = [];
+    const failedIds: string[] = [];
+    
+    for (const id of cardIds) {
+      try {
+        await permanentDeleteCard({ id });
+        deletedIds.push(id);
+      } catch (error) {
+        console.error(`Failed to delete ${id}:`, error);
+        failedIds.push(id);
+      }
+    }
+    
+    console.log(`Deleted: ${deletedIds.length}, Failed: ${failedIds.length}`);
+    ```
+    
+    Consider implementing batch operations in parallel:
+    ```typescript
+    const results = await Promise.allSettled(
+      cardIds.map(id => permanentDeleteCard({ id }))
+    );
+    
+    const successful = results.filter(r => r.status === "fulfilled").length;
+    const failed = results.filter(r => r.status === "rejected").length;
+    ```
+  </Accordion>
+  
+  <Accordion title="Storage Cleanup">
+    The function currently deletes `fileId` and `thumbnailId`, but not:
+    
+    - Link preview images (`metadata.linkPreview.imageStorageId`)
+    - Link preview screenshots (`metadata.linkPreview.screenshotStorageId`)
+    
+    To fully clean up storage, you may want to extend the function:
+    
+    ```typescript
+    // Extended cleanup (not in current implementation)
+    if (card.metadata?.linkPreview?.imageStorageId) {
+      await ctx.storage.delete(card.metadata.linkPreview.imageStorageId);
+    }
+    if (card.metadata?.linkPreview?.screenshotStorageId) {
+      await ctx.storage.delete(card.metadata.linkPreview.screenshotStorageId);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Workflow Example
+
+```typescript
+// Complete deletion workflow
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function CardActions({ card }) {
+  const updateCardField = useMutation(api.card.updateCard.updateCardField);
+  const permanentDelete = useMutation(api.card.deleteCard.permanentDeleteCard);
+  
+  const handleSoftDelete = async () => {
+    await updateCardField({
+      cardId: card._id,
+      field: "delete"
+    });
+    toast.success("Moved to trash");
+  };
+  
+  const handleRestore = async () => {
+    await updateCardField({
+      cardId: card._id,
+      field: "restore"
+    });
+    toast.success("Card restored");
+  };
+  
+  const handlePermanentDelete = async () => {
+    const confirmed = confirm(
+      "Permanently delete this card? This cannot be undone."
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      await permanentDelete({ id: card._id });
+      toast.success("Card permanently deleted");
+    } catch (error) {
+      toast.error("Failed to delete card");
+    }
+  };
+  
+  if (card.isDeleted) {
+    return (
+      <>
+        <button onClick={handleRestore}>Restore</button>
+        <button onClick={handlePermanentDelete}>Delete Forever</button>
+      </>
+    );
+  }
+  
+  return <button onClick={handleSoftDelete}>Delete</button>;
+}
+```
+
+### Source Reference
+
+Implemented in `packages/convex/card/deleteCard.ts:4`

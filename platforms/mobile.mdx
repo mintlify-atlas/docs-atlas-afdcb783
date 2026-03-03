@@ -1,0 +1,431 @@
+---
+title: Mobile App
+description: The Expo/React Native mobile application for iOS and Android
+icon: mobile
+---
+
+The Teak mobile app brings your personal knowledge hub to iOS and Android devices with native performance and mobile-first features.
+
+## Overview
+
+Built with Expo 55 and React Native, the mobile app provides a seamless native experience for capturing and accessing your ideas on the go.
+
+<CardGroup cols={2}>
+  <Card title="Technology Stack" icon="code">
+    - Expo 55 with EAS
+    - React Native 0.83
+    - Expo Router for navigation
+    - Convex for real-time sync
+  </Card>
+  <Card title="Native Features" icon="mobile-screen">
+    - Audio recording
+    - Camera & photo picker
+    - File uploads
+    - Haptic feedback
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Native Capture Methods
+
+The mobile app offers multiple native ways to capture content:
+
+<AccordionGroup>
+  <Accordion title="Text Input">
+    Quick text notes with a native keyboard experience
+    - Rich text support
+    - Auto-save drafts
+    - Offline support
+  </Accordion>
+  <Accordion title="Audio Recording">
+    Record voice memos and ideas with high-quality audio
+    - High-quality audio recording (expo-audio)
+    - Real-time duration display
+    - Automatic transcription via AI
+    - Background recording support
+    
+    ```typescript
+    import { useAudioRecorder, RecordingPresets } from "expo-audio";
+    
+    const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+    ```
+  </Accordion>
+  <Accordion title="Image & Video">
+    Capture or select media from your device
+    - Camera integration (expo-image-picker)
+    - Photo library access
+    - Video uploads
+    - EXIF data preservation
+  </Accordion>
+  <Accordion title="Document Upload">
+    Upload PDFs and other documents
+    - File picker integration (expo-document-picker)
+    - Multiple file types supported
+    - Automatic metadata extraction
+  </Accordion>
+</AccordionGroup>
+
+### Share Extension
+
+Share content to Teak from any iOS/Android app:
+
+```typescript
+// app/incoming-share.tsx
+// Handles shared content from other apps
+```
+
+<Card title="Share Extension Support" icon="share-nodes">
+  Share links, text, images, and files directly to Teak from:
+  - Safari/Chrome
+  - Social media apps
+  - Notes apps
+  - Photo gallery
+  - Any app with share functionality
+</Card>
+
+### Real-Time Sync
+
+All cards sync in real-time with the Convex backend:
+
+- Instant updates across devices
+- Offline support with local caching
+- Automatic conflict resolution
+
+## Installation & Setup
+
+### Prerequisites
+
+- Node.js 18+ or Bun
+- Expo CLI
+- iOS Simulator (for iOS development)
+- Android Studio (for Android development)
+- EAS CLI (for building)
+
+### Development
+
+<CodeGroup>
+
+```bash Start Development Server
+# Install dependencies
+bun install
+
+# Start Expo development server
+bun run dev
+
+# Or start mobile + Convex
+bun run dev:mobile
+```
+
+```bash Platform-Specific
+# Run on iOS
+bun run ios
+
+# Run on Android
+bun run android
+
+# Run on web (Expo web)
+bun run web
+```
+
+```bash Quality Checks
+# Type checking
+bun run typecheck
+
+# Linting
+bun run lint
+
+# Tests
+bun run test
+```
+
+</CodeGroup>
+
+### Building for Production
+
+<Steps>
+  <Step title="Configure EAS">
+    Set up your EAS Build credentials:
+    
+    ```bash
+    eas build:configure
+    ```
+  </Step>
+  <Step title="Build iOS">
+    Build for iOS (local or cloud):
+    
+    ```bash
+    # Cloud build
+    eas build --platform ios
+    
+    # Local build
+    bun run build:local
+    ```
+  </Step>
+  <Step title="Submit to App Store">
+    Submit your build to the App Store:
+    
+    ```bash
+    bun run build:submit
+    ```
+  </Step>
+</Steps>
+
+### App Store Metadata
+
+Manage App Store metadata directly from the CLI:
+
+```bash
+# Pull current metadata
+bun run metadata:pull
+
+# Push updated metadata
+bun run metadata:push
+```
+
+## Platform-Specific Features
+
+### iOS
+
+<CardGroup cols={2}>
+  <Card title="Apple Authentication" icon="apple">
+    Native Sign in with Apple integration via expo-apple-authentication
+  </Card>
+  <Card title="Haptic Feedback" icon="hand-pointer">
+    Native haptic feedback for interactions using expo-haptics
+  </Card>
+  <Card title="Share Sheet" icon="share">
+    Native iOS share sheet integration via expo-sharing
+  </Card>
+  <Card title="Secure Storage" icon="lock">
+    Keychain integration via expo-secure-store for sensitive data
+  </Card>
+</CardGroup>
+
+### Android
+
+<CardGroup cols={2}>
+  <Card title="Share Intent" icon="share">
+    Native Android share intent handling
+  </Card>
+  <Card title="File Access" icon="folder">
+    Native file system access via expo-file-system
+  </Card>
+  <Card title="Network Detection" icon="wifi">
+    Network status monitoring via expo-network
+  </Card>
+  <Card title="Clipboard" icon="clipboard">
+    System clipboard integration via expo-clipboard
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Navigation Structure
+
+```
+app/
+├── (auth)/              # Authentication flow
+│   ├── welcome.tsx      # Welcome screen
+│   ├── sign-in.tsx      # Sign in
+│   └── sign-up.tsx      # Sign up
+├── (tabs)/              # Main tab navigation
+│   ├── (home)/          # Home feed
+│   │   ├── index.tsx    # Cards grid
+│   │   └── card/[id].tsx # Card detail
+│   ├── add/             # Add content
+│   │   ├── index.tsx    # Add options
+│   │   ├── text.tsx     # Text input
+│   │   ├── record.tsx   # Audio recording
+│   │   └── upload.tsx   # File upload
+│   └── settings/        # Settings
+│       └── index.tsx    # Settings screen
+├── incoming-share.tsx   # Share extension handler
+└── _layout.tsx          # Root layout
+```
+
+### Component Structure
+
+- **Expo UI Components**: Native Swift UI components via @expo/ui
+- **Icons**: SF Symbols via expo-symbols for iOS, Material Icons for Android
+- **Cards Grid**: Virtualized list for performance
+- **Native Modals**: Platform-specific modal presentations
+
+### State Management
+
+- Convex queries for server state
+- React hooks for local state
+- AsyncStorage for persistent local data
+- Secure Store for sensitive data
+
+## Native Modules
+
+### Audio Recording
+
+```typescript
+import { 
+  useAudioRecorder, 
+  RecordingPresets,
+  requestRecordingPermissionsAsync 
+} from "expo-audio";
+
+// Request permissions
+const { granted } = await requestRecordingPermissionsAsync();
+
+// Start recording
+const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+await recorder.prepareToRecordAsync();
+recorder.record();
+```
+
+### Image & Video
+
+```typescript
+import * as ImagePicker from "expo-image-picker";
+
+// Pick from camera roll
+const result = await ImagePicker.launchImageLibraryAsync({
+  mediaTypes: ImagePicker.MediaTypeOptions.All,
+  allowsEditing: true,
+  quality: 1,
+});
+
+// Take photo
+const photo = await ImagePicker.launchCameraAsync({
+  allowsEditing: true,
+  quality: 1,
+});
+```
+
+### File Upload
+
+```typescript
+import * as DocumentPicker from "expo-document-picker";
+
+const result = await DocumentPicker.getDocumentAsync({
+  type: "*/*",
+  copyToCacheDirectory: true,
+});
+```
+
+### Haptic Feedback
+
+```typescript
+import * as Haptics from "expo-haptics";
+
+// Success feedback
+await Haptics.notificationAsync(
+  Haptics.NotificationFeedbackType.Success
+);
+
+// Impact feedback
+await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+```
+
+## Performance Optimization
+
+### Virtualized Lists
+
+Use `@react-native/virtualized-lists` for efficient rendering:
+
+```typescript
+import { FlashList } from "@shopify/flash-list";
+
+// Efficient card list rendering
+<FlashList
+  data={cards}
+  renderItem={renderCard}
+  estimatedItemSize={200}
+/>
+```
+
+### Image Optimization
+
+- Automatic image resizing before upload
+- Cached image loading
+- Progressive image loading
+
+### Offline Support
+
+- Local data caching with AsyncStorage
+- Optimistic updates for better UX
+- Background sync when online
+
+## Deployment
+
+### EAS Build
+
+The mobile app uses EAS Build for cloud builds:
+
+<CodeGroup>
+
+```json eas.json
+{
+  "build": {
+    "production": {
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}
+```
+
+```bash Build Commands
+# Build for iOS
+eas build --platform ios
+
+# Build for Android
+eas build --platform android
+
+# Build for both
+eas build --platform all
+```
+
+</CodeGroup>
+
+### App Store Submission
+
+```bash
+# Submit iOS build
+eas submit --platform ios
+
+# Submit Android build
+eas submit --platform android
+```
+
+## Testing
+
+### Unit Tests
+
+```bash
+bun run test
+```
+
+### E2E Testing
+
+Use Expo's testing tools for end-to-end testing:
+
+```typescript
+import { render, fireEvent } from "@testing-library/react-native";
+```
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Backend" icon="server" href="/development/backend">
+    Learn about the Convex backend
+  </Card>
+  <Card title="File Operations" icon="upload" href="/api/files/upload">
+    Configure file upload handling
+  </Card>
+  <Card title="Expo" icon="arrow-up-right-from-square" href="https://docs.expo.dev">
+    Official Expo documentation
+  </Card>
+  <Card title="React Native" icon="arrow-up-right-from-square" href="https://reactnative.dev">
+    Official React Native docs
+  </Card>
+</CardGroup>

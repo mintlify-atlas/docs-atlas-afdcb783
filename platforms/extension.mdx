@@ -1,0 +1,603 @@
+---
+title: Browser Extension
+description: Chrome and Firefox extension for saving web content to Teak
+icon: puzzle-piece
+---
+
+The Teak browser extension lets you save web content, links, and text selections directly from your browser to your personal knowledge hub.
+
+## Overview
+
+Built with Wxt (Web eXTension framework), the browser extension provides seamless integration with Chrome, Firefox, and other Chromium-based browsers.
+
+<CardGroup cols={2}>
+  <Card title="Technology Stack" icon="code">
+    - Wxt 0.20 framework
+    - React 19 for UI
+    - Better Auth integration
+    - Convex for real-time sync
+  </Card>
+  <Card title="Browsers" icon="window">
+    - Chrome/Chromium
+    - Firefox
+    - Edge
+    - Brave
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Multiple Save Methods
+
+<AccordionGroup>
+  <Accordion title="Context Menu">
+    Right-click to save content:
+    - **Save Page to Teak**: Save the current page URL
+    - **Save Text to Teak**: Save selected text
+    
+    ```typescript
+    // Automatically creates context menu items
+    chrome.contextMenus.create({
+      id: "save-page",
+      title: "Save Page to Teak",
+      contexts: ["page"],
+    });
+    ```
+  </Accordion>
+  <Accordion title="Popup Interface">
+    Click the extension icon to:
+    - Quick save current page
+    - View save status
+    - Access recent saves
+    - Manage authentication
+  </Accordion>
+  <Accordion title="Social Media Integration">
+    Inline save buttons on supported platforms:
+    - **Instagram**: Save posts directly from feed
+    - **X/Twitter**: Save tweets with one click
+    - **Pinterest**: Save pins to your vault
+    
+    ```typescript
+    // Platforms supported for inline saving
+    const SUPPORTED_PLATFORMS = [
+      "instagram.com",
+      "x.com",
+      "twitter.com",
+      "pinterest.com"
+    ];
+    ```
+  </Accordion>
+  <Accordion title="Auto-Save URLs">
+    Automatically detects and saves URLs from:
+    - Address bar changes
+    - Tab switches
+    - Bookmarks (optional)
+  </Accordion>
+</AccordionGroup>
+
+### Social Platform Features
+
+The extension integrates seamlessly with social media platforms:
+
+<Tabs>
+  <Tab title="Instagram">
+    - Save posts from feed
+    - Extract post permalinks
+    - Save images and captions
+    - Handle carousels
+  </Tab>
+  <Tab title="X (Twitter)">
+    - Save tweets
+    - Extract thread context
+    - Save media attachments
+    - Handle quoted tweets
+  </Tab>
+  <Tab title="Pinterest">
+    - Save pins
+    - Extract board information
+    - Save pin images
+    - Preserve descriptions
+  </Tab>
+</Tabs>
+
+### Authentication
+
+Seamless authentication using Better Auth:
+
+- Cookie-based session sharing with web app
+- Automatic session detection
+- Secure credential storage
+- One-click sign in from popup
+
+```typescript
+import { hasValidSession } from "./utils/getSessionFromCookies";
+
+// Check if user is authenticated
+const authenticated = await hasValidSession();
+```
+
+## Installation
+
+### From Web Stores
+
+<CardGroup cols={2}>
+  <Card title="Chrome Web Store" icon="chrome">
+    Install from the Chrome Web Store (coming soon)
+  </Card>
+  <Card title="Firefox Add-ons" icon="firefox">
+    Install from Firefox Add-ons (coming soon)
+  </Card>
+</CardGroup>
+
+### Manual Installation (Developer Mode)
+
+<Steps>
+  <Step title="Build Extension">
+    Build the extension from source:
+    
+    ```bash
+    # Clone repository
+    cd apps/extension
+    
+    # Install dependencies
+    bun install
+    
+    # Build for Chrome
+    bun run build
+    
+    # Or build for Firefox
+    bun run build:firefox
+    ```
+  </Step>
+  <Step title="Load in Chrome">
+    1. Open `chrome://extensions/`
+    2. Enable "Developer mode"
+    3. Click "Load unpacked"
+    4. Select `.output/chrome-mv3` directory
+  </Step>
+  <Step title="Load in Firefox">
+    1. Open `about:debugging#/runtime/this-firefox`
+    2. Click "Load Temporary Add-on"
+    3. Select `manifest.json` from `.output/firefox-mv3`
+  </Step>
+</Steps>
+
+## Development
+
+### Setup
+
+<CodeGroup>
+
+```bash Development Server
+# Install dependencies
+bun install
+
+# Start dev server (Chrome)
+bun run dev
+
+# Start dev server (Firefox)
+bun run dev:firefox
+```
+
+```bash Production Build
+# Build for Chrome
+bun run build
+
+# Build for Firefox
+bun run build:firefox
+
+# Create zip for submission
+bun run zip
+bun run zip:firefox
+```
+
+```bash Quality Checks
+# Type checking
+bun run typecheck
+
+# Tests
+bun run test
+```
+
+</CodeGroup>
+
+### Configuration
+
+The extension is configured via `wxt.config.ts`:
+
+```typescript wxt.config.ts
+import { defineConfig } from "wxt";
+
+export default defineConfig({
+  modules: ["@wxt-dev/module-react"],
+  manifest: {
+    name: "Teak",
+    description: "Your personal knowledge hub",
+    permissions: [
+      "storage",
+      "activeTab",
+      "tabs",
+      "contextMenus",
+      "scripting",
+      "cookies",
+    ],
+    host_permissions: ["<all_urls>"],
+  },
+});
+```
+
+## Architecture
+
+### Extension Structure
+
+```
+extension/
+├── entrypoints/
+│   ├── background.ts        # Service worker
+│   ├── content.ts           # Content script
+│   └── popup/
+│       ├── main.tsx         # Popup entry
+│       └── App.tsx          # Popup UI
+├── lib/
+│   ├── convex-api.ts        # Convex integration
+│   ├── auth-client.ts       # Auth handling
+│   └── saveToTeak.ts        # Core save logic
+├── hooks/
+│   ├── useContextMenuSave.ts
+│   ├── useAutoSaveUrl.ts
+│   └── useWebAppSession.ts
+├── types/
+│   ├── messages.ts          # Message types
+│   ├── contextMenu.ts       # Context menu types
+│   └── social.ts            # Social platform types
+├── utils/
+│   └── getSessionFromCookies.ts
+└── wxt.config.ts            # Extension config
+```
+
+### Message Passing
+
+The extension uses Chrome's messaging API for communication:
+
+```typescript
+// Message types
+export const MESSAGE_TYPES = {
+  GET_AUTH_STATE: "GET_AUTH_STATE",
+  SAVE_CONTENT: "SAVE_CONTENT",
+  SAVE_POST: "SAVE_POST",
+} as const;
+
+// Send message from content script
+const response = await chrome.runtime.sendMessage({
+  type: MESSAGE_TYPES.SAVE_CONTENT,
+  payload: { content, source },
+});
+```
+
+### Content Scripts
+
+Content scripts inject save buttons into social media pages:
+
+```typescript entrypoints/content.ts
+export default defineContentScript({
+  matches: [
+    "*://www.instagram.com/*",
+    "*://www.x.com/*",
+    "*://twitter.com/*",
+    "*://www.pinterest.com/*",
+  ],
+  main() {
+    // Inject save buttons
+    injectSaveButtons();
+  },
+});
+```
+
+### Background Service Worker
+
+Handles context menu, authentication, and save operations:
+
+```typescript entrypoints/background.ts
+import { saveToTeak } from "../lib/saveToTeak";
+
+export default defineBackground(() => {
+  // Create context menus
+  chrome.contextMenus.create({
+    id: "save-page",
+    title: "Save Page to Teak",
+    contexts: ["page"],
+  });
+  
+  // Handle clicks
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    const result = await saveToTeak({
+      content: tab.url,
+      source: "context-menu",
+    });
+  });
+});
+```
+
+## Features in Detail
+
+### Context Menu Integration
+
+Two context menu items are available:
+
+<CardGroup cols={2}>
+  <Card title="Save Page" icon="bookmark">
+    Right-click anywhere on a page to save the current URL with metadata extraction
+  </Card>
+  <Card title="Save Text" icon="text">
+    Select text and right-click to save it as a text card
+  </Card>
+</CardGroup>
+
+### Popup Interface
+
+The popup provides quick access to:
+
+- Current page save status
+- Recent saves
+- Authentication status
+- Extension settings
+
+```typescript popup/App.tsx
+import { useWebAppSession } from "@/hooks/useWebAppSession";
+import { useContextMenuSave } from "@/hooks/useContextMenuSave";
+
+function PopupApp() {
+  const { authenticated } = useWebAppSession();
+  const { state, error } = useContextMenuSave();
+  
+  return (
+    <div>
+      {authenticated ? <SaveStatus /> : <LoginPrompt />}
+    </div>
+  );
+}
+```
+
+### Social Media Extractors
+
+Platform-specific content extractors:
+
+```typescript entrypoints/content/platforms/
+├── instagram.ts     # Instagram post extractor
+├── x.ts             # X/Twitter tweet extractor
+└── pinterest.ts     # Pinterest pin extractor
+```
+
+Each extractor handles:
+
+- Post/tweet/pin detection
+- Permalink extraction
+- Metadata parsing
+- Media URL extraction
+
+### Auto-Save Functionality
+
+Optional automatic saving of URLs:
+
+```typescript hooks/useAutoSaveUrl.ts
+export function useAutoSaveUrl() {
+  useEffect(() => {
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (changeInfo.url && isValidUrl(changeInfo.url)) {
+        void saveToTeak({ content: changeInfo.url, source: "auto-save" });
+      }
+    });
+  }, []);
+}
+```
+
+## Permissions
+
+The extension requires the following permissions:
+
+<AccordionGroup>
+  <Accordion title="storage">
+    Store extension settings and cached data
+  </Accordion>
+  <Accordion title="activeTab">
+    Access the currently active tab for saving content
+  </Accordion>
+  <Accordion title="tabs">
+    Manage tabs and detect URL changes
+  </Accordion>
+  <Accordion title="contextMenus">
+    Create right-click context menu items
+  </Accordion>
+  <Accordion title="scripting">
+    Inject content scripts for social media integration
+  </Accordion>
+  <Accordion title="cookies">
+    Access authentication cookies from the web app
+  </Accordion>
+  <Accordion title="host_permissions: <all_urls>">
+    Access all websites for content extraction (required for social media integration)
+  </Accordion>
+</AccordionGroup>
+
+## Privacy & Security
+
+<Card title="Privacy First" icon="shield">
+  - No analytics or tracking
+  - No data collection beyond what you save
+  - Session data stored locally only
+  - Secure communication with Convex backend
+  - Open source for transparency
+</Card>
+
+### Cookie Access
+
+The extension reads cookies from `teakvault.com` to maintain authentication:
+
+```typescript utils/getSessionFromCookies.ts
+export async function hasValidSession(): Promise<boolean> {
+  const cookies = await chrome.cookies.getAll({
+    domain: "teakvault.com",
+  });
+  
+  // Check for valid session token
+  return cookies.some(c => c.name === "better-auth.session_token");
+}
+```
+
+## Testing
+
+The extension includes comprehensive tests:
+
+```bash
+# Run all tests
+bun run test
+
+# Test coverage includes:
+# - Background script
+# - Content script
+# - Social extractors
+# - Auth utilities
+# - Save functionality
+```
+
+<CodeGroup>
+
+```typescript Background Tests
+// __tests__/background.test.ts
+import { describe, it, expect } from "bun:test";
+
+describe("Context Menu", () => {
+  it("creates save page menu item", () => {
+    // Test context menu creation
+  });
+});
+```
+
+```typescript Content Script Tests
+// __tests__/content.test.ts
+import { describe, it, expect } from "bun:test";
+
+describe("Social Extractors", () => {
+  it("extracts Instagram post permalink", () => {
+    // Test Instagram extractor
+  });
+});
+```
+
+</CodeGroup>
+
+## Publishing
+
+### Chrome Web Store
+
+<Steps>
+  <Step title="Build">
+    Create production build and zip:
+    
+    ```bash
+    bun run build
+    bun run zip
+    ```
+  </Step>
+  <Step title="Prepare Assets">
+    - Screenshots (1280x800 or 640x400)
+    - Promotional images
+    - Icon (128x128)
+    - Description and privacy policy
+  </Step>
+  <Step title="Submit">
+    1. Go to [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
+    2. Upload `.output/chrome-mv3.zip`
+    3. Fill in store listing
+    4. Submit for review
+  </Step>
+</Steps>
+
+### Firefox Add-ons
+
+<Steps>
+  <Step title="Build">
+    Create Firefox build and zip:
+    
+    ```bash
+    bun run build:firefox
+    bun run zip:firefox
+    ```
+  </Step>
+  <Step title="Submit">
+    1. Go to [Firefox Add-on Developer Hub](https://addons.mozilla.org/developers/)
+    2. Upload `.output/firefox-mv3.zip`
+    3. Submit for review
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Extension Not Loading">
+    - Verify manifest.json is valid
+    - Check browser console for errors
+    - Ensure all dependencies are built
+    - Try reloading the extension
+  </Accordion>
+  <Accordion title="Authentication Issues">
+    - Ensure you're logged in to the web app
+    - Check cookie permissions
+    - Clear extension storage and re-authenticate
+    - Verify domain matches (teakvault.com)
+  </Accordion>
+  <Accordion title="Save Failures">
+    - Check network connection
+    - Verify Convex backend is accessible
+    - Check browser console for errors
+    - Ensure content is not from restricted URL (chrome://, file://, etc.)
+  </Accordion>
+  <Accordion title="Social Media Buttons Not Appearing">
+    - Refresh the page
+    - Check if platform is supported
+    - Verify content script is injecting
+    - Check browser console for errors
+  </Accordion>
+</AccordionGroup>
+
+## Browser Compatibility
+
+<Tabs>
+  <Tab title="Chrome">
+    - Chrome 88+
+    - Manifest V3
+    - Full feature support
+  </Tab>
+  <Tab title="Firefox">
+    - Firefox 109+
+    - Manifest V3 (compatible)
+    - Full feature support
+  </Tab>
+  <Tab title="Edge">
+    - Edge 88+
+    - Chrome Web Store compatible
+    - Full feature support
+  </Tab>
+  <Tab title="Brave">
+    - Brave 1.20+
+    - Chrome Web Store compatible
+    - Full feature support
+  </Tab>
+</Tabs>
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Backend" icon="server" href="/development/backend">
+    Learn about the Convex backend integration
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Explore the Teak API
+  </Card>
+  <Card title="Wxt" icon="arrow-up-right-from-square" href="https://wxt.dev">
+    Official Wxt framework documentation
+  </Card>
+  <Card title="Chrome Extensions" icon="arrow-up-right-from-square" href="https://developer.chrome.com/docs/extensions">
+    Chrome extension development guide
+  </Card>
+</CardGroup>

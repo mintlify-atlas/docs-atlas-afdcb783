@@ -1,0 +1,259 @@
+---
+title: Create Card
+description: Create a new card with automatic type detection and AI processing
+---
+
+## createCard
+
+Creates a new card in Teak. The card type can be auto-detected based on content, or explicitly specified. All cards go through an AI processing pipeline for metadata extraction, categorization, and enhancement.
+
+<CodeGroup>
+
+```typescript React
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function AddCardForm() {
+  const createCard = useMutation(api.card.createCard.createCard);
+
+  const handleSubmit = async (content: string) => {
+    const cardId = await createCard({
+      content,
+      type: "text",
+      tags: ["important"],
+      notes: "Quick note about this card"
+    });
+    console.log("Created card:", cardId);
+  };
+
+  return <form onSubmit={handleSubmit}>{/* ... */}</form>;
+}
+```
+
+```typescript Node.js
+import { ConvexHttpClient } from "convex/browser";
+
+const client = new ConvexHttpClient(process.env.CONVEX_URL);
+
+const cardId = await client.mutation(api.card.createCard.createCard, {
+  content: "Check out this article",
+  url: "https://example.com/article",
+  type: "link",
+  tags: ["reading-list"],
+  notes: "Read this later"
+});
+```
+
+```typescript Auto-detect Type
+// Let Teak automatically detect the card type
+const cardId = await createCard({
+  content: "\"The only way to do great work is to love what you do.\" - Steve Jobs"
+  // type is auto-detected as "quote" based on quotation marks
+});
+```
+
+```typescript Palette Card
+// Create a color palette card
+const cardId = await createCard({
+  content: "Brand colors for new project",
+  type: "palette",
+  colors: [
+    { hex: "#FF5733" },
+    { hex: "#33FF57" },
+    { hex: "#3357FF" }
+  ],
+  tags: ["branding", "design"]
+});
+```
+
+```typescript Image Card
+// Create an image card with file
+const cardId = await createCard({
+  content: "Beautiful sunset photo",
+  type: "image",
+  fileId: storageId, // from ctx.storage.store()
+  tags: ["photography", "nature"]
+});
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="content" type="string" required>
+  The main content of the card. For text cards, this is the primary text. For links, this can include the URL or description. For quotes, quotation marks are automatically normalized.
+</ParamField>
+
+<ParamField path="type" type="CardType">
+  The type of card to create. If omitted, Teak will automatically detect the type based on content analysis.
+  
+  Supported types:
+  - `text` - Plain text notes
+  - `link` - Web links with automatic metadata extraction
+  - `image` - Image files with AI vision analysis
+  - `video` - Video files with thumbnail generation
+  - `audio` - Audio recordings with transcription
+  - `document` - PDF and document files
+  - `palette` - Color palettes with hex codes
+  - `quote` - Quoted text with automatic formatting
+</ParamField>
+
+<ParamField path="url" type="string">
+  URL associated with the card. Automatically extracted from content if not provided. Required for link cards to enable metadata extraction.
+</ParamField>
+
+<ParamField path="fileId" type="Id<'_storage'>">
+  Storage ID of the uploaded file. Use `ctx.storage.store()` to upload files first, then pass the returned ID here.
+  
+  Required for: `image`, `video`, `audio`, `document` card types.
+</ParamField>
+
+<ParamField path="thumbnailId" type="Id<'_storage'>">
+  Storage ID of a custom thumbnail image. If not provided, thumbnails are auto-generated for supported media types.
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  User-defined tags for organizing and filtering cards. These are separate from AI-generated tags.
+  
+  ```typescript
+  tags: ["work", "urgent", "design-system"]
+  ```
+</ParamField>
+
+<ParamField path="notes" type="string">
+  Additional notes or context about the card. Searchable and indexed separately from main content.
+</ParamField>
+
+<ParamField path="metadata" type="any">
+  Custom metadata object. File-related fields (fileName, fileSize, mimeType, duration, width, height) are automatically extracted to `fileMetadata`.
+  
+  ```typescript
+  metadata: {
+    source: "mobile-app",
+    importedFrom: "notion"
+  }
+  ```
+</ParamField>
+
+<ParamField path="colors" type="Color[]">
+  Array of color objects for palette cards. If creating a palette card without colors, Teak will attempt to extract colors from the content, notes, or tags.
+  
+  <Expandable title="Color object structure">
+    <ParamField path="hex" type="string" required>
+      Hex color code (e.g., `"#FF5733"`)
+    </ParamField>
+    
+    <ParamField path="name" type="string">
+      Optional color name (e.g., `"Sunset Orange"`)
+    </ParamField>
+    
+    <ParamField path="rgb" type="object">
+      RGB values as `{ r: number, g: number, b: number }`
+    </ParamField>
+    
+    <ParamField path="hsl" type="object">
+      HSL values as `{ h: number, s: number, l: number }`
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="cardId" type="Id<'cards'>">
+  The unique identifier of the newly created card. Use this to query the card or perform updates.
+  
+  ```typescript
+  const cardId = await createCard({ content: "Hello" });
+  // Returns: "jd7x2k8p9q5r6s7t8u9v0w1x2y3z4"
+  ```
+</ResponseField>
+
+### Behavior
+
+<AccordionGroup>
+  <Accordion title="Auto-detection Logic">
+    When `type` is not provided, Teak uses the following rules:
+    
+    1. **Quote detection**: If content contains quotation marks that are removed during normalization, type is set to `"quote"`
+    2. **URL extraction**: URLs are automatically extracted from content and set in the `url` field
+    3. **Default fallback**: If no specific type is detected, defaults to `"text"`
+    4. **Classification pipeline**: Auto-detected cards enter the classification stage for AI-based type detection
+  </Accordion>
+  
+  <Accordion title="Processing Pipeline">
+    After creation, cards automatically enter a multi-stage processing workflow:
+    
+    1. **Classification** (if type auto-detected)
+       - AI determines the most appropriate card type
+       - Extracts palette colors for visual content
+    
+    2. **Categorization** (for link cards)
+       - Waits for metadata extraction to complete
+       - Assigns category based on link content
+    
+    3. **Metadata Extraction**
+       - **Links**: Fetches page title, description, preview images
+       - **Media**: Generates AI tags and summaries
+       - **Audio**: Creates transcripts
+    
+    4. **Renderables Generation**
+       - Creates thumbnails for images and videos
+       - Skips if original file is already small
+  </Accordion>
+  
+  <Accordion title="Rate Limiting">
+    The `ensureCardCreationAllowed()` function checks:
+    - User authentication
+    - Rate limits (prevents spam)
+    - Card count limits (subscription-based)
+    
+    Throws an error if limits are exceeded.
+  </Accordion>
+  
+  <Accordion title="Quote Formatting">
+    For quote cards, content is automatically normalized:
+    - Removes leading/trailing quotation marks
+    - Preserves internal quotes
+    - Stores normalized version in database
+    
+    ```typescript
+    // Input
+    content: '"This is a quote" - Author'
+    
+    // Stored as
+    content: 'This is a quote - Author'
+    type: 'quote'
+    ```
+  </Accordion>
+  
+  <Accordion title="Palette Color Extraction">
+    When creating a palette card without explicit colors:
+    
+    1. Combines content, notes, and tags into analysis text
+    2. Extracts up to 12 colors using `extractPaletteColors()`
+    3. Builds color facets (hex codes and hue categories)
+    4. Enables color-based search and filtering
+  </Accordion>
+</AccordionGroup>
+
+### Error Handling
+
+<ResponseField name="User must be authenticated" type="Error">
+  Thrown when no authenticated user session is found.
+  
+  ```typescript
+  throw new Error("User must be authenticated");
+  ```
+</ResponseField>
+
+<ResponseField name="Rate limit exceeded" type="Error">
+  Thrown by `ensureCardCreationAllowed()` when rate limits are hit.
+</ResponseField>
+
+<ResponseField name="Card count limit exceeded" type="Error">
+  Thrown when user has reached their subscription's card limit.
+</ResponseField>
+
+### Source Reference
+
+Implemented in `packages/convex/card/createCard.ts:192`

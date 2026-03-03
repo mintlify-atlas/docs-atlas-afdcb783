@@ -1,0 +1,336 @@
+---
+title: Contributing
+description: Learn how to contribute to Teak - from forking the repository to submitting pull requests
+---
+
+## Getting Started
+
+Teak is an open-source personal knowledge hub, and we welcome contributions from the community. This guide will help you get started with contributing to the project.
+
+### Prerequisites
+
+Before you begin, make sure you have:
+
+- [Bun](https://bun.sh) installed (v1.3.5 or higher)
+- [Git](https://git-scm.com) for version control
+- A code editor (we recommend VS Code)
+- Basic knowledge of TypeScript, React, and Node.js
+
+## Contribution Workflow
+
+<Steps>
+
+### Fork and Clone
+
+Fork the Teak repository on GitHub and clone your fork locally:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/teak.git
+cd teak
+```
+
+### Install Dependencies
+
+Install all dependencies using Bun:
+
+```bash
+bun install
+```
+
+This will install dependencies for all workspaces in the monorepo.
+
+### Create a Branch
+
+Create a new branch for your feature or bug fix:
+
+```bash
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/your-bug-fix
+```
+
+<Note>
+Use descriptive branch names that indicate the type of change:
+- `feature/` for new features
+- `fix/` for bug fixes
+- `docs/` for documentation updates
+- `refactor/` for code refactoring
+</Note>
+
+### Make Your Changes
+
+Make your changes to the codebase. Follow the [Code Quality Guidelines](#code-quality-tools) below.
+
+### Test Your Changes
+
+Run tests to ensure your changes don't break existing functionality:
+
+```bash
+bun run test
+```
+
+See the [Testing Guide](/development/testing) for more information.
+
+### Commit Your Changes
+
+Commit your changes using descriptive commit messages:
+
+```bash
+git add .
+git commit -m "feat: add new card filtering feature"
+```
+
+See [Commit Conventions](#commit-conventions) for our commit message format.
+
+### Push and Create a Pull Request
+
+Push your branch to your fork and create a pull request:
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Then open a pull request on GitHub with a clear description of your changes.
+
+</Steps>
+
+## Code Quality Tools
+
+Teak uses several tools to maintain code quality and consistency across the monorepo.
+
+### Biome
+
+[Biome](https://biomejs.dev) is our primary linter and formatter. It provides fast, reliable code formatting and linting for JavaScript and TypeScript.
+
+<CodeGroup>
+
+```bash title="Check Code Quality"
+bun run lint
+```
+
+```bash title="Auto-fix Issues"
+biome check --write
+```
+
+</CodeGroup>
+
+Our Biome configuration extends Ultracite presets for core, React, and Next.js:
+
+```jsonc title="biome.jsonc"
+{
+  "extends": [
+    "ultracite/biome/core",
+    "ultracite/biome/react",
+    "ultracite/biome/next"
+  ],
+  "javascript": {
+    "globals": ["chrome", "defineBackground", "defineContentScript"]
+  }
+}
+```
+
+### Ultracite
+
+[Ultracite](https://ultracite.dev) provides additional code quality checks and integrations with Biome.
+
+<CodeGroup>
+
+```bash title="Check Quality"
+bun run check
+```
+
+```bash title="Auto-fix Issues"
+bun run fix
+```
+
+</CodeGroup>
+
+<Tip>
+Run `bun run fix` before committing to automatically fix most linting and formatting issues.
+</Tip>
+
+### TypeScript
+
+All code must pass TypeScript type checking:
+
+```bash
+bun run typecheck
+```
+
+This runs across all workspaces in the monorepo to ensure type safety.
+
+## Pre-commit Hooks
+
+Teak uses [simple-git-hooks](https://github.com/toplenboren/simple-git-hooks) to run quality checks before each commit.
+
+### What Runs on Pre-commit
+
+The pre-commit hook automatically runs:
+
+- TypeScript type checking (`typecheck`)
+- Linting (`lint`)
+- Build verification (`build`)
+- Only on affected packages (using Turborepo's `--affected` flag)
+
+```json title="package.json"
+{
+  "scripts": {
+    "pre-commit": "turbo run typecheck lint build --affected"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "bun run pre-commit"
+  }
+}
+```
+
+### Manual Pre-commit Check
+
+You can manually run the pre-commit checks:
+
+```bash
+bun run pre-commit
+```
+
+<Note>
+The `--affected` flag means only packages that have changed files will be checked, making the process faster.
+</Note>
+
+## Commit Conventions
+
+Teak follows the [Conventional Commits](https://www.conventionalcommits.org/) specification for commit messages.
+
+### Commit Message Format
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+### Types
+
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, missing semicolons, etc.)
+- `refactor`: Code refactoring without changing functionality
+- `perf`: Performance improvements
+- `test`: Adding or updating tests
+- `chore`: Build process or auxiliary tool changes
+- `ci`: CI/CD configuration changes
+
+### Scopes
+
+Use the workspace or feature area as the scope:
+
+- `web`: Web application
+- `mobile`: Mobile application
+- `desktop`: Desktop application
+- `extension`: Browser extension
+- `convex`: Backend/Convex functions
+- `docs`: Documentation site
+
+### Examples
+
+```bash
+# Feature
+git commit -m "feat(web): add card filtering by date range"
+
+# Bug fix
+git commit -m "fix(extension): resolve context menu not appearing"
+
+# Documentation
+git commit -m "docs: update contributing guidelines"
+
+# Refactor
+git commit -m "refactor(convex): simplify card processing workflow"
+
+# With body
+git commit -m "feat(mobile): add offline support
+
+Implements local caching for cards when offline.
+Cards are synced when connection is restored."
+```
+
+## CI/CD Process
+
+Teak uses GitHub Actions for continuous integration and deployment.
+
+### Pull Request Checks
+
+When you create a pull request, the following checks run automatically:
+
+1. **Type Checking**: Verifies all TypeScript types are correct
+2. **Linting**: Ensures code follows style guidelines
+3. **Build**: Confirms all packages build successfully
+4. **Tests**: Runs the full test suite
+
+### Required Checks
+
+All checks must pass before a pull request can be merged:
+
+- Type check: `bun run typecheck`
+- Lint: `bun run lint`
+- Build: `bun run build`
+- Test: `bun run test`
+
+<Tip>
+Run all checks locally before pushing:
+
+```bash
+bun run typecheck && bun run lint && bun run build && bun run test
+```
+</Tip>
+
+### Deployment
+
+After a pull request is merged to the main branch:
+
+- The documentation site is automatically deployed
+- Convex functions are deployed to production
+- Web application is deployed to Vercel
+
+## Best Practices
+
+### Code Style
+
+- Write clear, self-documenting code
+- Use TypeScript types for all function parameters and return values
+- Prefer functional components and hooks in React
+- Keep functions small and focused on a single responsibility
+- Use descriptive variable and function names
+
+### Testing
+
+- Write tests for new features and bug fixes
+- Keep tests fast and deterministic
+- Update test fixtures when changing data structures
+- See the [Testing Guide](/development/testing) for details
+
+### Documentation
+
+- Update documentation when adding or changing features
+- Include JSDoc comments for exported functions
+- Add examples to help others understand your code
+
+### Pull Requests
+
+- Keep pull requests focused on a single feature or fix
+- Write clear descriptions explaining what and why
+- Reference related issues in the description
+- Respond to review feedback promptly
+- Keep your branch up to date with main
+
+## Getting Help
+
+If you need help or have questions:
+
+- Check the [documentation](/introduction)
+- Open an issue on GitHub
+- Join our community discussions
+
+<Note>
+When adding a feature, write or update tests and make sure `bun run test` passes before submitting your pull request.
+</Note>

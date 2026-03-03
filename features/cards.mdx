@@ -1,0 +1,211 @@
+---
+title: Cards Overview
+description: Understanding Teak's card system for capturing and organizing ideas
+---
+
+# Cards Overview
+
+Cards are the fundamental building blocks of Teak. Every piece of content you save—whether it's a quick thought, a link, an image, or a document—becomes a card in your personal knowledge hub.
+
+## What is a Card?
+
+A card is a unified data structure that can represent different types of content. All cards share common properties while supporting type-specific metadata and features.
+
+### Common Card Properties
+
+Every card includes:
+
+- **Content**: The main text or data associated with the card
+- **Type**: One of 8 card types (text, link, image, video, audio, document, palette, quote)
+- **Tags**: User-defined labels for organization
+- **Notes**: Additional context or annotations
+- **Timestamps**: Creation time (`createdAt`) and last update time (`updatedAt`)
+- **Favorite status**: Quick access to important cards
+- **Deletion state**: Soft-delete support for trash functionality
+
+### Type-Specific Properties
+
+Depending on the card type, additional properties may include:
+
+- **URL**: For link cards
+- **File storage**: References to uploaded files (`fileId`, `thumbnailId`)
+- **Metadata**: Rich preview data for links, file information for media
+- **AI-generated fields**: Auto-extracted tags, summaries, and transcripts
+- **Colors**: Palette information for image and palette cards
+
+<Note>
+All cards have a unique identifier (`_id`) and creation timestamp (`_creationTime`) automatically added by Convex.
+</Note>
+
+## Card Schema
+
+Here's the core card validator from the schema:
+
+```typescript
+export const cardValidator = v.object({
+  userId: v.string(),
+  content: v.string(),
+  type: cardTypeValidator,
+  url: v.optional(v.string()),
+  fileId: v.optional(v.id("_storage")),
+  thumbnailId: v.optional(v.id("_storage")),
+  tags: v.optional(v.array(v.string())),
+  notes: v.optional(v.string()),
+  isFavorited: v.optional(v.boolean()),
+  isDeleted: v.optional(v.boolean()),
+  deletedAt: v.optional(v.number()),
+  metadata: metadataValidator,
+  fileMetadata: fileMetadataValidator,
+  // AI-generated fields
+  aiTags: v.optional(v.array(v.string())),
+  aiSummary: v.optional(v.string()),
+  aiTranscript: v.optional(v.string()),
+  visualStyles: v.optional(v.array(v.string())),
+  // Palette fields
+  colors: v.optional(v.array(colorValidator)),
+  colorHexes: v.optional(v.array(v.string())),
+  colorHues: v.optional(v.array(v.string())),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+```
+
+## Card Lifecycle
+
+### 1. Creation
+
+When a card is created:
+
+1. Basic properties are set (content, type, userId)
+2. Timestamps are recorded
+3. Processing pipeline is triggered (if AI features enabled)
+
+### 2. Processing
+
+New cards enter an AI processing pipeline that:
+
+1. **Classifies** the content type (if not explicitly provided)
+2. **Categorizes** links into specific types (articles, videos, products, etc.)
+3. **Extracts metadata** (AI tags, summaries, transcripts)
+4. **Generates renderables** (thumbnails for images/videos/documents)
+
+Each stage updates the `processingStatus` field:
+
+```typescript
+processingStatus: {
+  classify: { status: "completed", confidence: 0.95 },
+  categorize: { status: "completed", confidence: 0.87 },
+  metadata: { status: "in_progress" },
+  renderables: { status: "pending" }
+}
+```
+
+### 3. Updates
+
+Cards can be updated at any time:
+
+- User-editable fields: `content`, `tags`, `notes`, `isFavorited`
+- System-managed fields: `aiTags`, `aiSummary`, metadata
+- The `updatedAt` timestamp is automatically refreshed
+
+### 4. Deletion
+
+Teak uses soft-deletion:
+
+- Cards are marked with `isDeleted: true` and `deletedAt: timestamp`
+- Deleted cards remain queryable for trash/recovery features
+- Hard deletion removes cards permanently from the database
+
+## Indexing & Performance
+
+Cards are indexed for fast queries:
+
+```typescript
+.index("by_user_type", ["userId", "type"])
+.index("by_user_type_deleted", ["userId", "type", "isDeleted"])
+.index("by_user_favorites", ["userId", "isFavorited"])
+.index("by_user_favorites_deleted", ["userId", "isFavorited", "isDeleted"])
+.index("by_user_deleted", ["userId", "isDeleted"])
+.index("by_created", ["userId", "createdAt"])
+.index("by_user_url_deleted", ["userId", "url", "isDeleted"])
+```
+
+### Search Indexes
+
+Full-text search is enabled across multiple fields:
+
+- `content` - Main card content
+- `notes` - User annotations
+- `aiSummary` - AI-generated summaries
+- `aiTranscript` - Audio/video transcripts
+- `metadataTitle` - Link preview titles
+- `metadataDescription` - Link preview descriptions
+- `tags` - User-defined tags
+- `aiTags` - AI-generated tags
+- `visualStyles` - Visual style classifications
+- `colorHexes` - Color palette hex codes
+- `colorHues` - Color hue categories
+
+<Info>
+Each search index supports filtering by `userId`, `isDeleted`, `type`, and `isFavorited` for efficient queries.
+</Info>
+
+## File Storage
+
+Cards can reference files stored in Convex's file storage system:
+
+- **fileId**: Primary file (original image, video, audio, document)
+- **thumbnailId**: Generated thumbnail for preview
+- **fileMetadata**: Detailed file information
+
+```typescript
+fileMetadata: {
+  fileSize: 2457600,        // bytes
+  fileName: "screenshot.png",
+  mimeType: "image/png",
+  width: 1920,
+  height: 1080,
+  duration: undefined       // for audio/video only
+}
+```
+
+## Metadata Structure
+
+Link cards include rich preview metadata:
+
+```typescript
+metadata: {
+  linkPreview: {
+    status: "success",
+    title: "Building with Convex",
+    description: "A guide to building real-time applications",
+    imageUrl: "https://...",
+    faviconUrl: "https://...",
+    siteName: "Convex Blog",
+    author: "Jane Developer",
+    publishedAt: "2024-01-15"
+  },
+  linkCategory: {
+    category: "article",
+    confidence: 0.92,
+    detectedProvider: "Medium"
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Card Types" icon="grid" href="/features/card-types">
+    Explore all 8 card types in detail
+  </Card>
+  <Card title="AI Processing" icon="sparkles" href="/features/ai-processing">
+    Learn how AI enhances your cards
+  </Card>
+  <Card title="Search" icon="search" href="/features/search">
+    Discover powerful search capabilities
+  </Card>
+  <Card title="Organization" icon="folder" href="/features/organization">
+    Master tags, favorites, and filters
+  </Card>
+</CardGroup>

@@ -1,0 +1,375 @@
+---
+title: Organizing Cards
+description: Master favorites, tags, filters, and visual facets to organize your knowledge effectively
+---
+
+## Overview
+
+Teak provides multiple organization strategies: favorites for quick access, tags for categorization, type filters for browsing, and visual filters for aesthetic discovery.
+
+## Favorites
+
+Mark important cards for instant access.
+
+### Marking as Favorite
+
+```typescript
+import { api } from "@teak/convex";
+import { useMutation } from "convex/react";
+
+const updateCard = useMutation(api.cards.updateCard);
+
+await updateCard({
+  cardId: "abc123",
+  isFavorited: true
+});
+```
+
+### Querying Favorites
+
+<Tabs items={['Basic', 'Paginated']}>
+  <Tab value="Basic">
+    ```typescript
+    import { api } from "@teak/convex";
+    import { useQuery } from "convex/react";
+
+    const favorites = useQuery(api.card.getCards.getCards, {
+      favoritesOnly: true,
+      limit: 50
+    });
+    ```
+  </Tab>
+
+  <Tab value="Paginated">
+    ```typescript
+    const { results, loadMore, status } = usePaginatedQuery(
+      api.card.getCards.searchCardsPaginated,
+      {
+        favoritesOnly: true
+      },
+      { initialNumItems: 50 }
+    );
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+Favorites use the optimized `by_user_favorites_deleted` index for fast queries.
+</Note>
+
+## Tags
+
+Organize cards with custom labels.
+
+### User Tags vs AI Tags
+
+Teak maintains two separate tag systems:
+
+| Feature | User Tags | AI Tags |
+| ------- | --------- | ------- |
+| Source | Manual input | AI-generated |
+| Field | `tags` | `aiTags` |
+| Editable | Yes | No (regenerate card) |
+| Search | Full-text search | Full-text search |
+
+### Adding Tags
+
+```typescript
+// At creation
+await createCard({
+  content: "Design inspiration",
+  tags: ["ui", "dark-mode", "inspiration"]
+});
+
+// Update existing card
+await updateCard({
+  cardId: "abc123",
+  tags: ["ui", "dark-mode", "inspiration", "new-tag"]
+});
+```
+
+### Searching by Tags
+
+Tags are searchable via the full-text search system:
+
+```typescript
+const results = useQuery(api.card.getCards.searchCards, {
+  searchQuery: "dark-mode", // Matches tags containing "dark-mode"
+  limit: 50
+});
+```
+
+<Tip>
+Tag searches use partial matching. Searching "dark" will find cards tagged "dark-mode".
+</Tip>
+
+## Type Filters
+
+Filter by card type to focus on specific content.
+
+### Single Type
+
+```typescript
+const images = useQuery(api.card.getCards.searchCards, {
+  types: ["image"],
+  limit: 50
+});
+```
+
+<Note>
+Single-type filters use the optimized `by_user_type_deleted` index.
+</Note>
+
+### Multiple Types
+
+```typescript
+const media = useQuery(api.card.getCards.searchCards, {
+  types: ["image", "video", "audio"],
+  limit: 50
+});
+```
+
+### All Available Types
+
+```typescript
+import { CARD_TYPES } from "@teak/convex/shared/constants";
+
+// ["text", "link", "image", "video", "audio", "document", "palette", "quote"]
+console.log(CARD_TYPES);
+```
+
+## Visual Filters
+
+Discover cards by aesthetic style and color.
+
+### Visual Styles
+
+Teak extracts 13 visual style facets from images and videos:
+
+<Tabs items={['Styles', 'Aliases', 'Usage']}>
+  <Tab value="Styles">
+    | Style | Description |
+    | ----- | ----------- |
+    | **abstract** | Abstract art, non-representational |
+    | **cinematic** | Film-like, dramatic composition |
+    | **dark** | Dark mode, low-key lighting |
+    | **illustrative** | Hand-drawn, illustrated |
+    | **minimal** | Minimalist, simple composition |
+    | **monochrome** | Black and white, grayscale |
+    | **moody** | Atmospheric, dramatic |
+    | **pastel** | Soft, muted colors |
+    | **photographic** | Realistic, photo-like |
+    | **retro** | Vintage computing, synthwave |
+    | **surreal** | Dreamlike, surreal |
+    | **vintage** | Aged, antique aesthetic |
+    | **vibrant** | Highly saturated, colorful |
+  </Tab>
+
+  <Tab value="Aliases">
+    Teak normalizes similar terms:
+
+    ```typescript
+    "black and white" → "monochrome"
+    "b&w" → "monochrome"
+    "photo" → "photographic"
+    "colorful" → "vibrant"
+    "drawing" → "illustrative"
+    "minimalist" → "minimal"
+    ```
+
+    See `packages/convex/shared/constants.ts:54-99` for all aliases.
+  </Tab>
+
+  <Tab value="Usage">
+    ```typescript
+    const moodyImages = useQuery(api.card.getCards.searchCards, {
+      types: ["image"],
+      styleFilters: ["moody", "cinematic"],
+      limit: 50
+    });
+    ```
+  </Tab>
+</Tabs>
+
+### Color Hues
+
+Filter by dominant color hue:
+
+<Tabs items={['Hues', 'Aliases', 'Usage']}>
+  <Tab value="Hues">
+    | Hue | Coverage |
+    | --- | -------- |
+    | **red** | Red tones |
+    | **orange** | Orange tones |
+    | **yellow** | Yellow tones |
+    | **green** | Green tones |
+    | **teal** | Teal tones |
+    | **cyan** | Cyan tones |
+    | **blue** | Blue tones |
+    | **purple** | Purple, violet, indigo |
+    | **pink** | Pink, magenta, fuchsia |
+    | **brown** | Brown tones |
+    | **neutral** | Gray, monochrome |
+  </Tab>
+
+  <Tab value="Aliases">
+    ```typescript
+    "violet" → "purple"
+    "indigo" → "purple"
+    "magenta" → "pink"
+    "gray" → "neutral"
+    "grey" → "neutral"
+    ```
+  </Tab>
+
+  <Tab value="Usage">
+    ```typescript
+    const purpleImages = useQuery(api.card.getCards.searchCards, {
+      types: ["image"],
+      hueFilters: ["purple", "pink"],
+      limit: 50
+    });
+    ```
+  </Tab>
+</Tabs>
+
+### Exact Colors
+
+Filter by specific hex codes:
+
+```typescript
+const results = useQuery(api.card.getCards.searchCards, {
+  hexFilters: ["#FF6B35", "#F7931E"],
+  limit: 50
+});
+```
+
+<Note>
+Hex filters match palette cards containing those exact colors.
+</Note>
+
+### Combined Visual Filters
+
+```typescript
+const aestheticImages = useQuery(api.card.getCards.searchCards, {
+  types: ["image"],
+  styleFilters: ["minimal", "monochrome"],
+  hueFilters: ["neutral"],
+  limit: 50
+});
+```
+
+<Tip>
+Visual filters use dedicated facet indexes for performance. See `packages/convex/card/visualFilters.ts`.
+</Tip>
+
+## Time Ranges
+
+Filter by creation date:
+
+```typescript
+const recentCards = useQuery(api.card.getCards.searchCards, {
+  createdAtRange: {
+    start: Date.now() - 7 * 24 * 60 * 60 * 1000, // 7 days ago
+    end: Date.now()
+  },
+  limit: 50
+});
+```
+
+<Note>
+Time range queries use the `by_created` index for efficient filtering.
+</Note>
+
+## Trash
+
+Cards can be soft-deleted and recovered:
+
+### Move to Trash
+
+```typescript
+await updateCard({
+  cardId: "abc123",
+  isDeleted: true
+});
+```
+
+### View Trash
+
+```typescript
+const trashedCards = useQuery(api.card.getCards.searchCards, {
+  showTrashOnly: true,
+  limit: 50
+});
+```
+
+### Restore from Trash
+
+```typescript
+await updateCard({
+  cardId: "abc123",
+  isDeleted: false // or undefined
+});
+```
+
+<Warning>
+Permanent deletion is not yet implemented. All deletions are soft-deletes.
+</Warning>
+
+## Combining Filters
+
+All filters can be combined for powerful queries:
+
+```typescript
+const results = useQuery(api.card.getCards.searchCards, {
+  searchQuery: "design inspiration",
+  types: ["image", "link"],
+  favoritesOnly: true,
+  styleFilters: ["minimal", "vibrant"],
+  hueFilters: ["blue", "purple"],
+  createdAtRange: {
+    start: Date.now() - 30 * 24 * 60 * 60 * 1000,
+    end: Date.now()
+  },
+  limit: 50
+});
+```
+
+## Performance Tips
+
+<Steps>
+  <Step title="Use Specific Indexes">
+    Single-type and favorites-only queries use optimized compound indexes:
+
+    - `by_user_type_deleted` for single type
+    - `by_user_favorites_deleted` for favorites
+    - `by_created` for time ranges
+  </Step>
+
+  <Step title="Paginate Large Results">
+    ```typescript
+    const { results, loadMore, status } = usePaginatedQuery(
+      api.card.getCards.searchCardsPaginated,
+      { /* filters */ },
+      { initialNumItems: 50 }
+    );
+    ```
+  </Step>
+
+  <Step title="Visual Filters with Type Filter">
+    Combine visual filters with type filters to reduce search space:
+
+    ```typescript
+    {
+      types: ["image"], // Narrow down first
+      styleFilters: ["minimal"]
+    }
+    ```
+  </Step>
+</Steps>
+
+## Source Reference
+
+- Query logic: `packages/convex/card/getCards.ts:45-747`
+- Visual filters: `packages/convex/card/visualFilters.ts`
+- Constants: `packages/convex/shared/constants.ts:20-227`

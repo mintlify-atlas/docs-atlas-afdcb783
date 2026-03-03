@@ -1,0 +1,226 @@
+---
+title: File Upload
+description: Upload files to Teak using the generateUploadUrl mutation and file upload workflow
+---
+
+## Overview
+
+Teak supports uploading files up to 20MB for images, videos, audio, and documents. The file upload process is a multi-step workflow that ensures proper validation, storage, and card creation.
+
+## Upload Workflow
+
+<Steps>
+  <Step title="Generate Upload URL">
+    Call `generateUploadUrl` to get a temporary upload URL from Convex storage.
+  </Step>
+  
+  <Step title="Upload File">
+    Upload the file to the URL using a POST request with the file as the request body.
+  </Step>
+  
+  <Step title="Create Card">
+    After successful upload, call `finalizeUploadedCard` with the fileId to create the card and trigger AI processing.
+  </Step>
+</Steps>
+
+## generateUploadUrl
+
+Generates a temporary URL for uploading a file to Convex storage.
+
+### Parameters
+
+<ParamField path="fileName" type="string" optional>
+  The name of the file being uploaded (for logging and debugging purposes).
+</ParamField>
+
+<ParamField path="fileType" type="string" optional>
+  The MIME type of the file being uploaded (for logging and debugging purposes).
+</ParamField>
+
+### Returns
+
+<ResponseField name="uploadUrl" type="string">
+  A temporary URL that can be used to upload the file via POST request.
+</ResponseField>
+
+### Example
+
+```typescript
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+const generateUploadUrl = useMutation(api.card.generateUploadUrl);
+
+// Generate upload URL
+const uploadUrl = await generateUploadUrl({
+  fileName: "photo.jpg",
+  fileType: "image/jpeg"
+});
+
+// Upload the file
+const response = await fetch(uploadUrl, {
+  method: "POST",
+  body: file,
+  headers: {
+    "Content-Type": file.type
+  }
+});
+
+const { storageId } = await response.json();
+```
+
+### Authentication
+
+Requires authenticated user. Returns an error if called without authentication.
+
+### Location
+
+`packages/convex/card/generateUploadUrl.ts:4`
+
+---
+
+## finalizeUploadedCard
+
+Completes the upload process by creating a card with the uploaded file.
+
+### Parameters
+
+<ParamField path="fileId" type="Id<'_storage'>" required>
+  The storage ID returned from the upload POST request.
+</ParamField>
+
+<ParamField path="fileName" type="string" required>
+  The original name of the uploaded file.
+</ParamField>
+
+<ParamField path="cardType" type="CardType" required>
+  The type of card to create. Must be one of:
+  - `"image"` - Image files
+  - `"video"` - Video files
+  - `"audio"` - Audio files
+  - `"document"` - PDF and document files
+</ParamField>
+
+<ParamField path="content" type="string" optional>
+  Optional text content to associate with the card.
+</ParamField>
+
+<ParamField path="additionalMetadata" type="object" optional>
+  Additional metadata for the file:
+  - `recordingTimestamp` - When the media was recorded
+  - `duration` - Duration for audio/video files
+  - `width` - Width for images/videos
+  - `height` - Height for images/videos
+</ParamField>
+
+### Returns
+
+<ResponseField name="success" type="boolean">
+  Whether the card was created successfully.
+</ResponseField>
+
+<ResponseField name="cardId" type="Id<'cards'>" optional>
+  The ID of the created card (only present if success is true).
+</ResponseField>
+
+<ResponseField name="error" type="string" optional>
+  Error message if the operation failed.
+</ResponseField>
+
+<ResponseField name="errorCode" type="string" optional>
+  Error code for programmatic handling. Possible values:
+  - `CARD_LIMIT_REACHED` - User has reached their card limit
+  - `RATE_LIMITED` - Too many cards created recently
+  - `TYPE_MISMATCH` - File MIME type doesn't match the specified card type
+</ResponseField>
+
+### Example
+
+```typescript
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+const finalizeCard = useMutation(api.card.finalizeUploadedCard);
+
+// After uploading the file
+const result = await finalizeCard({
+  fileId: storageId,
+  fileName: "photo.jpg",
+  cardType: "image",
+  content: "Beautiful sunset from my trip",
+  additionalMetadata: {
+    width: 1920,
+    height: 1080
+  }
+});
+
+if (result.success) {
+  console.log("Card created:", result.cardId);
+} else {
+  console.error("Error:", result.error);
+}
+```
+
+### Validation
+
+<Note>
+  The mutation validates that:
+  - The file exists in storage
+  - The MIME type matches the specified card type
+  - The user hasn't exceeded their card limit
+  - The user hasn't hit rate limits
+</Note>
+
+### Location
+
+`packages/convex/card/uploadCard.ts:106`
+
+---
+
+## File Size Limits
+
+Teak enforces a maximum file size of **20MB** (20,971,520 bytes) for all uploads.
+
+<Note>
+  Files exceeding 20MB will be rejected during the upload process. Make sure to validate file sizes on the client before attempting to upload.
+</Note>
+
+---
+
+## Supported File Types
+
+Teak supports the following file types, organized by card type:
+
+### Images
+- All files with MIME type starting with `image/`
+- Examples: JPEG, PNG, GIF, WebP, SVG, etc.
+
+### Videos
+- All files with MIME type starting with `video/`
+- Examples: MP4, WebM, MOV, AVI, etc.
+
+### Audio
+- All files with MIME type starting with `audio/`
+- Examples: MP3, WAV, M4A, OGG, etc.
+
+### Documents
+- PDF files (`application/pdf`)
+- Microsoft Word documents (`application/msword`, `application/vnd.openxmlformats-officedocument.*`)
+- Text files (MIME types starting with `text/`)
+
+<Note>
+  The file's MIME type must match the specified `cardType`. For example, uploading a video file with `cardType: "image"` will fail with a `TYPE_MISMATCH` error.
+</Note>
+
+---
+
+## Processing Pipeline
+
+After a file is successfully uploaded and the card is created:
+
+1. **Classification** - AI determines visual characteristics and palette colors
+2. **Thumbnail Generation** - Creates optimized preview images
+3. **Metadata Extraction** - Extracts tags, summary, and other AI-generated insights
+4. **Categorization** - Organizes the card based on content
+
+All processing happens asynchronously in the background. You can monitor the processing status via the `processingStatus` field on the card.

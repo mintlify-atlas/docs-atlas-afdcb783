@@ -1,0 +1,482 @@
+---
+title: Card Types
+description: A comprehensive guide to all 8 card types in Teak
+---
+
+# Card Types
+
+Teak supports 8 distinct card types, each optimized for different kinds of content. The system automatically classifies content during the AI processing pipeline, or you can explicitly specify the type when creating a card.
+
+## Available Card Types
+
+```typescript
+export const cardTypes = [
+  "text",
+  "link",
+  "image",
+  "video",
+  "audio",
+  "document",
+  "palette",
+  "quote",
+] as const;
+```
+
+---
+
+## Text Cards
+
+<img className="block" src="/images/card-types/text.png" alt="Text card example" />
+
+Text cards are the simplest card type for capturing plain text notes, ideas, and snippets.
+
+### Properties
+
+- **content**: The main text content
+- **tags**: User-defined tags
+- **notes**: Additional annotations
+- **aiTags**: Auto-generated topic tags
+- **aiSummary**: AI-generated summary (for longer text)
+
+### Use Cases
+
+- Quick notes and ideas
+- Code snippets
+- Quotes and excerpts
+- Meeting notes
+- Brain dumps
+
+<Note>
+Text cards do not require file uploads or URLs. They're perfect for capturing thoughts on the fly.
+</Note>
+
+---
+
+## Link Cards
+
+<img className="block" src="/images/card-types/link.png" alt="Link card example" />
+
+Link cards save web URLs with rich preview metadata automatically fetched from the target page.
+
+### Properties
+
+- **url**: The web address
+- **content**: User notes about the link
+- **metadata.linkPreview**: Rich preview data
+  - `title`: Page title
+  - `description`: Meta description
+  - `imageUrl`: Social preview image
+  - `faviconUrl`: Site favicon
+  - `siteName`: Publisher name
+  - `author`: Content author
+  - `publishedAt`: Publication date
+- **metadata.linkCategory**: Classified category
+  - `category`: One of the link categories (article, video, product, etc.)
+  - `confidence`: Classification confidence score
+  - `detectedProvider`: Platform detection (YouTube, GitHub, Medium, etc.)
+
+### Link Categories
+
+Links are automatically categorized into specific types:
+
+- **Article**: Blog posts, news articles, documentation
+- **Video**: YouTube, Vimeo, streaming content
+- **Product**: E-commerce, SaaS products, tools
+- **Repository**: GitHub repos, code samples
+- **Design**: Dribbble, Behance, design inspiration
+- **Social**: Twitter threads, LinkedIn posts
+- **Tool**: Web apps, utilities, services
+
+### Metadata Fetching
+
+When you save a link:
+
+1. URL is validated and stored
+2. Link metadata workflow is triggered
+3. Page is fetched and parsed for Open Graph/meta tags
+4. Preview image is cached in Convex storage
+5. Category is classified using AI
+6. Structured data is extracted (for supported providers)
+
+```typescript
+// Example link metadata
+metadata: {
+  linkPreview: {
+    status: "success",
+    url: "https://example.com/article",
+    finalUrl: "https://example.com/article",
+    title: "How to Build with Convex",
+    description: "A comprehensive guide...",
+    imageUrl: "https://cdn.example.com/preview.jpg",
+    imageStorageId: "kg2h4jk3h2k4h...",
+    faviconUrl: "https://example.com/favicon.ico",
+    siteName: "Tech Blog",
+    author: "Jane Developer",
+    publishedAt: "2024-01-15",
+    fetchedAt: 1705334400000
+  },
+  linkCategory: {
+    category: "article",
+    confidence: 0.92,
+    detectedProvider: "Medium",
+    fetchedAt: 1705334400000,
+    sourceUrl: "https://example.com/article"
+  }
+}
+```
+
+<Info>
+Link preview images are automatically downloaded and stored in Convex storage for faster loading and offline access.
+</Info>
+
+---
+
+## Image Cards
+
+<img className="block" src="/images/card-types/image.png" alt="Image card example" />
+
+Image cards store visual content with automatic palette extraction and visual style tagging.
+
+### Properties
+
+- **fileId**: Reference to uploaded image file
+- **thumbnailId**: Generated thumbnail (for large images)
+- **content**: User description or caption
+- **fileMetadata**: Image details
+  - `width`: Image width in pixels
+  - `height`: Image height in pixels
+  - `fileSize`: File size in bytes
+  - `fileName`: Original filename
+  - `mimeType`: Image format (image/png, image/jpeg, etc.)
+- **colors**: Extracted color palette
+- **colorHexes**: Array of hex color codes
+- **colorHues**: Categorized hues (red, blue, green, etc.)
+- **visualStyles**: Style classifications (minimal, vibrant, photographic, etc.)
+- **aiTags**: AI-generated content tags
+- **aiSummary**: Description of image content
+
+### Supported Formats
+
+- PNG (`.png`)
+- JPEG (`.jpg`, `.jpeg`)
+- GIF (`.gif`)
+- WebP (`.webp`)
+- SVG (`.svg`) - rendered to bitmap for palette extraction
+
+### Color Palette Extraction
+
+Images automatically have their color palettes extracted:
+
+```typescript
+colors: [
+  {
+    hex: "#8B7355",
+    name: "Almond",
+    rgb: { r: 139, g: 115, b: 85 },
+    hsl: { h: 33, s: 24, l: 44 }
+  },
+  {
+    hex: "#D4A574",
+    rgb: { r: 212, g: 165, b: 116 },
+    hsl: { h: 31, s: 53, l: 64 }
+  }
+]
+```
+
+### Visual Styles
+
+AI automatically classifies images with style tags:
+
+- `abstract` - Abstract art and patterns
+- `cinematic` - Film-like, wide shots, dramatic
+- `dark` - Low-key lighting, dark tones
+- `illustrative` - Drawings, cartoons, illustrations
+- `minimal` - Simple, clean, negative space
+- `monochrome` - Black and white, grayscale
+- `moody` - Atmospheric, dramatic lighting
+- `pastel` - Soft, muted colors
+- `photographic` - Realistic photography
+- `retro` - Vintage aesthetic, synthwave
+- `surreal` - Dreamlike, unusual compositions
+- `vintage` - Old, aged appearance
+- `vibrant` - Bright, saturated colors
+
+<Note>
+For SVG images, a raster thumbnail is generated first before palette extraction to ensure accurate color analysis.
+</Note>
+
+---
+
+## Video Cards
+
+<img className="block" src="/images/card-types/video.png" alt="Video card example" />
+
+Video cards store uploaded video files with automatic thumbnail generation and transcript extraction.
+
+### Properties
+
+- **fileId**: Reference to uploaded video file
+- **thumbnailId**: Auto-generated video thumbnail
+- **content**: User description or caption
+- **fileMetadata**: Video details
+  - `duration`: Length in seconds
+  - `width`: Video width in pixels
+  - `height`: Video height in pixels
+  - `fileSize`: File size in bytes
+  - `fileName`: Original filename
+  - `mimeType`: Video format (video/mp4, video/webm, etc.)
+- **aiTranscript**: Speech-to-text transcription
+- **aiSummary**: AI-generated content summary
+- **aiTags**: Auto-extracted topic tags
+
+### Supported Formats
+
+- MP4 (`.mp4`)
+- WebM (`.webm`)
+- MOV (`.mov`)
+- AVI (`.avi`)
+
+### Processing Pipeline
+
+For video cards:
+
+1. Video file is uploaded to Convex storage
+2. Thumbnail is generated from first frame or middle frame
+3. Audio is extracted and transcribed (if speech detected)
+4. AI generates summary based on transcript and visual content
+5. Topics are auto-tagged
+
+<Info>
+Thumbnail generation happens before AI metadata extraction to ensure the thumbnail is available for visual analysis.
+</Info>
+
+---
+
+## Audio Cards
+
+<img className="block" src="/images/card-types/audio.png" alt="Audio card example" />
+
+Audio cards store sound files with automatic transcription and topic extraction.
+
+### Properties
+
+- **fileId**: Reference to uploaded audio file
+- **content**: User description or title
+- **fileMetadata**: Audio details
+  - `duration`: Length in seconds
+  - `fileSize`: File size in bytes
+  - `fileName`: Original filename
+  - `mimeType`: Audio format (audio/mp3, audio/wav, etc.)
+  - `recordingTimestamp`: When recording was made (optional)
+- **aiTranscript**: Full speech-to-text transcription
+- **aiSummary**: AI-generated summary of content
+- **aiTags**: Auto-extracted topic tags
+
+### Supported Formats
+
+- MP3 (`.mp3`)
+- WAV (`.wav`)
+- OGG (`.ogg`)
+- M4A (`.m4a`)
+- FLAC (`.flac`)
+
+### Transcription
+
+Audio is automatically transcribed:
+
+- Speaker detection (if multiple speakers)
+- Timestamp markers
+- High accuracy speech-to-text
+- Searchable transcript content
+
+```typescript
+aiTranscript: `[00:00] Welcome to the podcast. Today we're discussing...
+[01:32] Our guest shares insights about...
+[05:45] Key takeaway: Always validate your assumptions...`
+```
+
+---
+
+## Document Cards
+
+<img className="block" src="/images/card-types/document.png" alt="Document card example" />
+
+Document cards store files like PDFs, presentations, and documents with thumbnail previews and content extraction.
+
+### Properties
+
+- **fileId**: Reference to uploaded document
+- **thumbnailId**: Preview thumbnail (first page)
+- **content**: User description or summary
+- **fileMetadata**: Document details
+  - `fileSize`: File size in bytes
+  - `fileName`: Original filename
+  - `mimeType`: Document format
+- **aiSummary**: AI-generated document summary
+- **aiTags**: Auto-extracted topic tags
+
+### Supported Formats
+
+- PDF (`.pdf`)
+- Microsoft Word (`.doc`, `.docx`)
+- Microsoft PowerPoint (`.ppt`, `.pptx`)
+- Text files (`.txt`, `.md`)
+
+### Processing
+
+1. Document is uploaded to Convex storage
+2. First page/slide is rendered as thumbnail
+3. Text content is extracted
+4. AI analyzes and summarizes key points
+5. Topics are auto-tagged
+
+---
+
+## Palette Cards
+
+<img className="block" src="/images/card-types/palette.png" alt="Palette card example" />
+
+Palette cards store curated color schemes for design inspiration.
+
+### Properties
+
+- **content**: Palette name or description
+- **colors**: Array of color objects with full details
+- **colorHexes**: Quick array of hex codes
+- **colorHues**: Categorized hue buckets
+
+### Color Structure
+
+```typescript
+colors: [
+  {
+    hex: "#8B7355",
+    name: "Almond",
+    rgb: { r: 139, g: 115, b: 85 },
+    hsl: { h: 33, s: 24, l: 44 }
+  },
+  {
+    hex: "#D4A574",
+    name: "Tan",
+    rgb: { r: 212, g: 165, b: 116 },
+    hsl: { h: 31, s: 53, l: 64 }
+  }
+]
+```
+
+### Color Hue Buckets
+
+Colors are categorized into hue families for filtering:
+
+- `red`
+- `orange`
+- `yellow`
+- `green`
+- `teal`
+- `cyan`
+- `blue`
+- `purple`
+- `pink`
+- `brown`
+- `neutral` (grays, blacks, whites)
+
+<Note>
+Palette cards can be created manually or auto-generated from image cards during processing.
+</Note>
+
+---
+
+## Quote Cards
+
+<img className="block" src="/images/card-types/quote.png" alt="Quote card example" />
+
+Quote cards capture memorable quotes, excerpts, and passages with proper attribution.
+
+### Properties
+
+- **content**: The quote text
+- **notes**: Attribution (author, source, context)
+- **tags**: Topic tags
+- **aiTags**: Auto-extracted themes and topics
+
+### Formatting
+
+Quotes are automatically formatted with:
+
+- Proper quotation marks
+- Attribution styling
+- Blockquote rendering
+- Source links (if applicable)
+
+### Use Cases
+
+- Book quotes and highlights
+- Inspirational sayings
+- Notable excerpts from articles
+- Customer testimonials
+- Interview sound bites
+
+---
+
+## Type Classification
+
+When content type is not explicitly provided, Teak's AI classifier automatically determines the card type during the processing pipeline:
+
+```typescript
+// Classification workflow
+classification: {
+  type: "image",
+  confidence: 0.95,
+  needsLinkMetadata: false,
+  shouldCategorize: false,
+  shouldGenerateMetadata: true,
+  shouldGenerateRenderables: true
+}
+```
+
+The classifier analyzes:
+
+- File extensions and MIME types
+- URL patterns
+- Content structure
+- Metadata hints
+
+## Type-Specific Indexes
+
+Efficient querying by type:
+
+```typescript
+.index("by_user_type", ["userId", "type"])
+.index("by_user_type_deleted", ["userId", "type", "isDeleted"])
+```
+
+Query examples:
+
+```typescript
+// Get all image cards
+const images = await ctx.db
+  .query("cards")
+  .withIndex("by_user_type_deleted", (q) =>
+    q.eq("userId", userId)
+     .eq("type", "image")
+     .eq("isDeleted", undefined)
+  )
+  .collect();
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AI Processing" icon="sparkles" href="/features/ai-processing">
+    Learn how AI enhances each card type
+  </Card>
+  <Card title="Search" icon="search" href="/features/search">
+    Search across all card types
+  </Card>
+  <Card title="Organization" icon="folder" href="/features/organization">
+    Filter and organize by type
+  </Card>
+  <Card title="Creating Cards" icon="plus" href="/guides/creating-cards">
+    Step-by-step card creation guide
+  </Card>
+</CardGroup>

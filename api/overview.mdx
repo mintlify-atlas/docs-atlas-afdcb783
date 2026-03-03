@@ -1,0 +1,123 @@
+---
+title: 'API Overview'
+description: 'Getting started with the Teak API'
+---
+
+## Introduction
+
+The Teak API allows you to programmatically interact with your personal knowledge hub. You can create cards, search your collection, and manage favorites using simple HTTP requests.
+
+<Note>
+  The Teak API is currently designed for integration with tools like Raycast. More endpoints will be added in future releases.
+</Note>
+
+## Base URL
+
+All API requests should be made to your Convex deployment URL:
+
+```
+https://[your-deployment].convex.cloud
+```
+
+You can find your deployment URL in the Convex dashboard for your Teak instance.
+
+## API Endpoints
+
+The following endpoints are available:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/raycast/quick-save` | POST | Create a new card (text or link) |
+| `/api/raycast/search` | GET | Search all cards |
+| `/api/raycast/favorites` | GET | Search favorited cards |
+
+## Request Format
+
+All requests must include:
+
+1. **Authentication header**: Bearer token with your API key
+2. **Content-Type header**: `application/json` for POST requests
+3. **Proper request body**: JSON-formatted data for POST requests
+
+### Example Request
+
+```bash
+curl -X POST https://[your-deployment].convex.cloud/api/raycast/quick-save \
+  -H "Authorization: Bearer teakapi_[your-api-key]" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "https://example.com"}'
+```
+
+## Response Format
+
+All API responses are returned in JSON format with appropriate HTTP status codes:
+
+- **200**: Success
+- **400**: Bad request (invalid input)
+- **401**: Unauthorized (missing or invalid API key)
+- **405**: Method not allowed
+- **429**: Rate limited (too many requests)
+- **500**: Internal server error
+
+### Success Response
+
+```json
+{
+  "status": "created",
+  "cardId": "jh7x5t9p2k8n4m1q6r3s"
+}
+```
+
+### Error Response
+
+```json
+{
+  "code": "INVALID_INPUT",
+  "error": "Field `content` must be a non-empty string"
+}
+```
+
+## Rate Limits
+
+<Warning>
+  API requests are rate limited to **120 requests per minute** per API key.
+</Warning>
+
+When you exceed the rate limit, you'll receive a `429` status code with a response like:
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "error": "Too many requests",
+  "retryAt": 1704067200000
+}
+```
+
+The `retryAt` field contains a Unix timestamp (in milliseconds) indicating when you can retry your request.
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `BAD_REQUEST` | The request was malformed or missing required fields |
+| `INVALID_INPUT` | The input data failed validation |
+| `UNAUTHORIZED` | Missing or invalid Authorization header |
+| `INVALID_API_KEY` | The API key is invalid or has been revoked |
+| `RATE_LIMITED` | Too many requests - retry after the specified time |
+| `METHOD_NOT_ALLOWED` | The HTTP method is not supported for this endpoint |
+| `INTERNAL_ERROR` | An unexpected server error occurred |
+
+<Info>
+  All timestamps in the API use Unix time in milliseconds.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn how to generate and use API keys
+  </Card>
+  <Card title="Create Card" icon="plus" href="/api/cards/create">
+    Create cards via the API
+  </Card>
+</CardGroup>

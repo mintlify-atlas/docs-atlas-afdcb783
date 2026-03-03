@@ -1,0 +1,449 @@
+---
+title: Color Palettes
+description: Create, extract, and organize color palette cards for design inspiration
+---
+
+## Overview
+
+Palette cards store collections of colors with optional names. Teak can extract colors from text, images, or accept manually defined palettes.
+
+## Creating Palette Cards
+
+### Manual Colors
+
+Explicitly provide colors when creating a palette:
+
+```typescript
+import { api } from "@teak/convex";
+import { useMutation } from "convex/react";
+
+const createCard = useMutation(api.card.createCard.createCard);
+
+await createCard({
+  content: "Sunset palette",
+  type: "palette",
+  colors: [
+    { 
+      hex: "#FF6B35",
+      name: "Coral",
+      rgb: { r: 255, g: 107, b: 53 },
+      hsl: { h: 16, s: 100, l: 60 }
+    },
+    { 
+      hex: "#F7931E",
+      name: "Orange"
+    },
+    { 
+      hex: "#FDC830",
+      name: "Yellow"
+    }
+  ]
+});
+```
+
+### Auto-Extraction from Text
+
+If you omit `colors`, Teak extracts hex codes from content, notes, and tags:
+
+```typescript
+await createCard({
+  content: "My palette: #FF6B35 #F7931E #FDC830",
+  type: "palette"
+  // Colors auto-extracted: ["#FF6B35", "#F7931E", "#FDC830"]
+});
+```
+
+<Note>
+See the extraction logic in `packages/convex/card/createCard.ts:138-151`.
+</Note>
+
+### Extraction from Images
+
+Image cards automatically get palette extraction:
+
+```typescript
+await createCard({
+  content: "Sunset photo",
+  type: "image",
+  fileId: storageId
+  // Palette extracted automatically during processing
+});
+```
+
+<Tip>
+Palette extraction runs in parallel with AI metadata generation for better performance.
+</Tip>
+
+## Color Object Structure
+
+```typescript
+interface Color {
+  hex: string;                           // Required: "#FF6B35"
+  name?: string;                         // Optional: "Coral"
+  rgb?: { r: number; g: number; b: number };  // Optional: { r: 255, g: 107, b: 53 }
+  hsl?: { h: number; s: number; l: number };  // Optional: { h: 16, s: 100, l: 60 }
+}
+```
+
+### Validation
+
+Colors are validated using the `colorValidator` schema:
+
+```typescript
+import { v } from "convex/values";
+
+const colorValidator = v.object({
+  hex: v.string(),
+  name: v.optional(v.string()),
+  rgb: v.optional(v.object({
+    r: v.number(),
+    g: v.number(),
+    b: v.number()
+  })),
+  hsl: v.optional(v.object({
+    h: v.number(),
+    s: v.number(),
+    l: v.number()
+  }))
+});
+```
+
+## Color Facets
+
+Teak builds searchable facets from palette colors:
+
+### Hex Facets
+
+Exact hex codes for precise matching:
+
+```typescript
+{
+  colors: [
+    { hex: "#FF6B35" },
+    { hex: "#F7931E" }
+  ],
+  colorHexes: ["#FF6B35", "#F7931E"] // Facet array
+}
+```
+
+### Hue Buckets
+
+Colors are categorized into 11 hue buckets:
+
+| Hue | Hex Range | Example |
+| --- | --------- | ------- |
+| **red** | 345-15° | `#FF0000` |
+| **orange** | 15-45° | `#FF8800` |
+| **yellow** | 45-75° | `#FFFF00` |
+| **green** | 75-165° | `#00FF00` |
+| **teal** | 165-180° | `#00FFAA` |
+| **cyan** | 180-195° | `#00FFFF` |
+| **blue** | 195-255° | `#0000FF` |
+| **purple** | 255-300° | `#8800FF` |
+| **pink** | 300-345° | `#FF00FF` |
+| **brown** | Low saturation warm | `#8B4513` |
+| **neutral** | Grayscale | `#888888` |
+
+```typescript
+{
+  colors: [
+    { hex: "#FF6B35" }, // Hue: 16° → orange
+    { hex: "#F7931E" }, // Hue: 35° → orange
+    { hex: "#FDC830" }  // Hue: 47° → yellow
+  ],
+  colorHues: ["orange", "yellow"] // Unique hue buckets
+}
+```
+
+<Note>
+Hue bucketing is implemented in `packages/convex/shared/utils/colorUtils.ts`.
+</Note>
+
+## Color Extraction
+
+Teak uses utility functions to extract colors from various sources:
+
+### From Text
+
+```typescript
+import { extractPaletteColors } from "@teak/convex/shared/utils/colorUtils";
+
+const text = `
+  My palette:
+  #FF6B35 - Coral
+  #F7931E - Orange
+  #FDC830 - Yellow
+`;
+
+const colors = extractPaletteColors(text, 12);
+// Returns: [
+//   { hex: "#FF6B35", name: "Coral" },
+//   { hex: "#F7931E", name: "Orange" },
+//   { hex: "#FDC830", name: "Yellow" }
+// ]
+```
+
+### From Images
+
+Image palette extraction uses the workflow step:
+
+```typescript
+// From cardProcessing.ts:110-128
+const palettePromise = classification.type === "image" && !isSvgImage
+  ? step.runAction(
+      internal.workflows.steps.palette.extractPaletteFromImage,
+      { cardId }
+    )
+  : Promise.resolve(null);
+```
+
+<Note>
+SVG images need thumbnail generation first, so palette extraction runs after renderables.
+</Note>
+
+## Searching by Color
+
+### Exact Hex Match
+
+```typescript
+const orangePalettes = useQuery(api.card.getCards.searchCards, {
+  hexFilters: ["#FF6B35"],
+  types: ["palette"],
+  limit: 50
+});
+```
+
+### Hue Match
+
+```typescript
+const warmPalettes = useQuery(api.card.getCards.searchCards, {
+  hueFilters: ["orange", "yellow", "red"],
+  types: ["palette", "image"],
+  limit: 50
+});
+```
+
+### Combined Filters
+
+```typescript
+const vibrantOrangePalettes = useQuery(api.card.getCards.searchCards, {
+  types: ["palette"],
+  hueFilters: ["orange"],
+  styleFilters: ["vibrant"],
+  limit: 50
+});
+```
+
+<Tip>
+Combining `hexFilters` and `hueFilters` creates an OR condition: cards matching either filter are returned.
+</Tip>
+
+## Palette Limits
+
+Teak extracts up to 12 colors per palette:
+
+```typescript
+// From createCard.ts:148
+const parsedColors = extractPaletteColors(paletteText, 12);
+```
+
+<Warning>
+If you provide more than 12 colors manually, they'll all be stored, but extracted palettes are capped at 12.
+</Warning>
+
+## Color Utilities
+
+Teak provides utility functions for color manipulation:
+
+### Building Color Facets
+
+```typescript
+import { buildColorFacets } from "@teak/convex/shared/utils/colorUtils";
+
+const { colorHexes, colorHues } = buildColorFacets([
+  { hex: "#FF6B35" },
+  { hex: "#F7931E" },
+  { hex: "#FDC830" }
+]);
+
+// colorHexes: ["#FF6B35", "#F7931E", "#FDC830"]
+// colorHues: ["orange", "yellow"]
+```
+
+### Validating Hex Codes
+
+```typescript
+const isValidHex = (hex: string): boolean => {
+  return /^#[0-9A-Fa-f]{6}$/.test(hex);
+};
+
+isValidHex("#FF6B35"); // true
+isValidHex("#FFF");    // false (3-digit not supported)
+isValidHex("FF6B35");  // false (missing #)
+```
+
+<Note>
+Teak only supports 6-digit hex codes (`#RRGGBB`). 3-digit codes must be expanded.
+</Note>
+
+## Visual Style Detection
+
+Palettes can have visual style tags for aesthetic filtering:
+
+```typescript
+await createCard({
+  content: "Pastel sunset palette",
+  type: "palette",
+  colors: [
+    { hex: "#FFB3BA" },
+    { hex: "#FFDFBA" },
+    { hex: "#FFFFBA" }
+  ],
+  tags: ["pastel", "soft", "sunset"]
+  // "pastel" tag creates visualStyles: ["pastel"] facet
+});
+```
+
+<Tip>
+Add style keywords to tags to enable visual filtering. See [Organizing Cards](/guides/organizing-cards#visual-styles) for available styles.
+</Tip>
+
+## Examples
+
+<Tabs items={['Brand Palette', 'Image Extraction', 'Text Extraction', 'Search']}>
+  <Tab value="Brand Palette">
+    ```typescript
+    await createCard({
+      content: "Company brand colors",
+      type: "palette",
+      tags: ["brand", "work"],
+      colors: [
+        { hex: "#1E3A8A", name: "Primary Blue" },
+        { hex: "#3B82F6", name: "Secondary Blue" },
+        { hex: "#BFDBFE", name: "Light Blue" },
+        { hex: "#1F2937", name: "Dark Gray" },
+        { hex: "#F3F4F6", name: "Light Gray" }
+      ]
+    });
+    ```
+  </Tab>
+
+  <Tab value="Image Extraction">
+    ```typescript
+    // Upload an image
+    const fileId = await storage.upload(imageFile);
+
+    // Create image card (palette extracted automatically)
+    await createCard({
+      content: "Sunset photo",
+      type: "image",
+      fileId: fileId,
+      tags: ["nature", "inspiration"]
+    });
+
+    // After processing, card will have:
+    // colors: [{ hex: "#FF6B35" }, { hex: "#F7931E" }, ...]
+    // colorHues: ["orange", "yellow", "red"]
+    ```
+  </Tab>
+
+  <Tab value="Text Extraction">
+    ```typescript
+    await createCard({
+      content: `
+        Material Design palette:
+        #F44336 Red
+        #E91E63 Pink
+        #9C27B0 Purple
+        #673AB7 Deep Purple
+      `,
+      type: "palette",
+      notes: "Material Design color palette for UI design"
+    });
+    // Colors extracted from content text
+    ```
+  </Tab>
+
+  <Tab value="Search">
+    ```typescript
+    // Find all warm-toned palettes
+    const warmPalettes = useQuery(api.card.getCards.searchCards, {
+      types: ["palette"],
+      hueFilters: ["red", "orange", "yellow"],
+      limit: 50
+    });
+
+    // Find vibrant color palettes
+    const vibrantPalettes = useQuery(api.card.getCards.searchCards, {
+      types: ["palette"],
+      styleFilters: ["vibrant"],
+      limit: 50
+    });
+
+    // Find palettes containing specific hex
+    const specificColor = useQuery(api.card.getCards.searchCards, {
+      hexFilters: ["#FF6B35"],
+      limit: 50
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+<Steps>
+  <Step title="Provide Color Names">
+    Named colors are easier to search and organize:
+
+    ```typescript
+    // Good
+    { hex: "#FF6B35", name: "Coral" }
+
+    // Works, but less discoverable
+    { hex: "#FF6B35" }
+    ```
+  </Step>
+
+  <Step title="Use Tags for Context">
+    ```typescript
+    {
+      content: "Sunset palette",
+      type: "palette",
+      tags: ["warm", "vibrant", "nature"],
+      colors: [/* ... */]
+    }
+    ```
+  </Step>
+
+  <Step title="Combine with Visual Filters">
+    Add style keywords to make palettes discoverable:
+
+    ```typescript
+    {
+      tags: ["pastel", "minimal", "ui-design"],
+      // Enables filtering by styleFilters: ["pastel", "minimal"]
+    }
+    ```
+  </Step>
+
+  <Step title="Extract from Screenshots">
+    For design inspiration, save screenshots as image cards:
+
+    ```typescript
+    await createCard({
+      content: "Beautiful UI design",
+      type: "image",
+      fileId: screenshotId,
+      tags: ["ui", "inspiration"]
+      // Palette extracted automatically
+    });
+    ```
+  </Step>
+</Steps>
+
+## Source Reference
+
+- Color extraction: `packages/convex/card/createCard.ts:138-151`
+- Color facets: `packages/convex/shared/utils/colorUtils.ts`
+- Color constants: `packages/convex/shared/constants.ts:150-227`
+- Palette workflow: `packages/convex/workflows/cardProcessing.ts:110-128`

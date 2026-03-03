@@ -1,0 +1,333 @@
+---
+title: Local Development Setup
+description: Set up your local development environment for Teak
+---
+
+Get your Teak development environment up and running with Bun, Node.js, and the required dependencies.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+<Steps>
+  <Step title="Install Bun">
+    Teak uses Bun as its package manager and runtime. Install Bun 1.3.5 or later:
+
+    <CodeGroup>
+      ```bash macOS/Linux
+      curl -fsSL https://bun.sh/install | bash
+      ```
+
+      ```bash Windows (PowerShell)
+      powershell -c "irm bun.sh/install.ps1 | iex"
+      ```
+    </CodeGroup>
+
+    Verify installation:
+    ```bash
+    bun --version
+    ```
+
+    <Note>
+      Teak is configured to use `bun@1.3.5` as defined in `package.json`. The exact version will be enforced by the packageManager field.
+    </Note>
+  </Step>
+
+  <Step title="Install Node.js">
+    While Teak uses Bun, some dependencies require Node.js. Install Node.js 18 or later:
+
+    - Download from [nodejs.org](https://nodejs.org/)
+    - Or use a version manager like [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm)
+
+    ```bash
+    node --version  # Should be 18.0.0 or higher
+    ```
+  </Step>
+
+  <Step title="Install Git">
+    Version control is managed with Git:
+
+    - Download from [git-scm.com](https://git-scm.com/)
+    - Or install via package manager (Homebrew, apt, etc.)
+
+    ```bash
+    git --version
+    ```
+  </Step>
+</Steps>
+
+## Clone and Install
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone <repository-url>
+    cd teak
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all workspace dependencies using Bun:
+
+    ```bash
+    bun install
+    ```
+
+    This installs dependencies for all apps and packages in the monorepo, including:
+    - Web app (Next.js)
+    - Mobile app (Expo)
+    - Desktop app (Tauri)
+    - Browser extension (Wxt)
+    - Convex backend
+    - Documentation site
+
+    <Note>
+      The `prepare` script will automatically run `simple-git-hooks` to set up pre-commit hooks.
+    </Note>
+  </Step>
+
+  <Step title="Set up environment variables">
+    Create environment files for your apps:
+
+    ```bash
+    # Web app
+    cp apps/web/.env.example apps/web/.env.local
+
+    # Convex backend
+    cp packages/convex/.env.example packages/convex/.env
+    ```
+
+    Configure required variables:
+    - `CONVEX_DEPLOYMENT` - Your Convex deployment URL
+    - `NEXT_PUBLIC_CONVEX_URL` - Public Convex URL for client-side
+    - `POLAR_ACCESS_TOKEN` - Polar integration token (if using billing)
+    - Other app-specific variables
+  </Step>
+</Steps>
+
+## Development Servers
+
+Teak provides multiple development commands for different apps and services:
+
+### Primary Development
+
+<CodeGroup>
+  ```bash Default (Web + Convex)
+  bun run dev
+  ```
+
+  ```bash All Services
+  bun run dev:all
+  ```
+</CodeGroup>
+
+The default `dev` command starts:
+- Next.js web app at `http://localhost:3000`
+- Convex backend with hot reloading
+
+### Individual Services
+
+<Tabs>
+  <Tab title="Web">
+    ```bash
+    bun run dev:web
+    ```
+
+    Starts the Next.js web app and Convex backend:
+    - Web: `http://localhost:3000`
+    - Uses `turbo watch` for hot reloading
+    - Automatically rebuilds on file changes
+  </Tab>
+
+  <Tab title="Mobile">
+    ```bash
+    bun run dev:mobile
+    ```
+
+    Starts the Expo mobile app:
+    - Expo DevTools will open
+    - Scan QR code with Expo Go app
+    - Supports iOS and Android development
+  </Tab>
+
+  <Tab title="Desktop">
+    ```bash
+    bun run dev:desktop
+    ```
+
+    Starts the Tauri desktop app:
+    - Launches Tauri development window
+    - Hot reloads React frontend
+    - Requires Rust toolchain installed
+  </Tab>
+
+  <Tab title="Extension">
+    ```bash
+    bun run dev:extension
+    ```
+
+    Builds the browser extension in watch mode:
+    - Outputs to `apps/extension/.output`
+    - Load unpacked extension in Chrome
+    - Includes Convex backend hot reloading
+  </Tab>
+
+  <Tab title="Convex Only">
+    ```bash
+    bun run dev:convex
+    ```
+
+    Runs only the Convex backend:
+    - Useful for backend-only development
+    - Hot deploys functions on save
+    - Watch mode enabled
+  </Tab>
+
+  <Tab title="Docs">
+    ```bash
+    bun run dev:docs
+    ```
+
+    Starts the documentation site:
+    - Runs at `http://localhost:3001`
+    - Built with Fumadocs
+    - MDX content hot reloading
+  </Tab>
+</Tabs>
+
+## Building for Production
+
+<CodeGroup>
+  ```bash Build All
+  bun run build
+  ```
+
+  ```bash Build Extension
+  bun run build:extension
+  ```
+
+  ```bash Build Raycast
+  bun run build:raycast
+  ```
+</CodeGroup>
+
+The build process:
+1. Runs Turborepo build pipeline
+2. Builds dependencies in order (`^build`)
+3. Outputs to app-specific directories:
+   - Web: `.next/`
+   - Extension: `dist/`
+   - Desktop: `.output/`
+
+## Code Quality
+
+### Linting and Type Checking
+
+<CodeGroup>
+  ```bash Lint
+  bun run lint
+  ```
+
+  ```bash Type Check
+  bun run typecheck
+  ```
+
+  ```bash Ultracite Check
+  bun run check
+  ```
+
+  ```bash Ultracite Fix
+  bun run fix
+  ```
+</CodeGroup>
+
+### Testing
+
+```bash
+bun run test
+```
+
+Runs the test suite across all workspaces using Turborepo.
+
+### Pre-commit Hooks
+
+The repository uses `simple-git-hooks` to run checks before commits:
+
+```bash
+bun run pre-commit
+```
+
+This runs:
+- Type checking
+- Linting
+- Builds (only for affected packages)
+
+<Note>
+  Pre-commit hooks are automatically installed when you run `bun install` via the `prepare` script.
+</Note>
+
+## Workspace Management
+
+Add dependencies to specific workspaces:
+
+<CodeGroup>
+  ```bash Production Dependency
+  bun add <package> --filter @teak/web
+  ```
+
+  ```bash Dev Dependency
+  bun add --dev <package> --filter @teak/convex
+  ```
+</CodeGroup>
+
+Examples:
+```bash
+# Add React Query to web app
+bun add @tanstack/react-query --filter @teak/web
+
+# Add TypeScript types to Convex
+bun add --dev @types/node --filter @teak/convex
+```
+
+## Troubleshooting
+
+### Clear Cache
+
+If you encounter issues, try clearing the Turbo cache:
+
+```bash
+bun run clean
+```
+
+This command:
+- Stops the Turbo daemon
+- Clears `node_modules/.cache`
+- Removes all `.turbo` directories
+
+### Reinstall Dependencies
+
+```bash
+rm -rf node_modules
+rm bun.lockb
+bun install
+```
+
+### Convex Issues
+
+If Convex functions aren't deploying:
+
+1. Check your deployment URL in `.env`
+2. Verify you're authenticated: `bunx convex dev`
+3. Check Convex dashboard for errors
+4. Restart the dev server
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monorepo Structure" icon="folder-tree" href="/development/monorepo">
+    Learn about the Turborepo workspace structure
+  </Card>
+  <Card title="Convex Backend" icon="database" href="/development/backend">
+    Set up and develop with the Convex backend
+  </Card>
+</CardGroup>

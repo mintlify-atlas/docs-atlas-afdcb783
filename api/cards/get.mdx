@@ -1,0 +1,392 @@
+---
+title: Get Cards
+description: Query individual cards or retrieve card collections with filtering
+---
+
+## getCard
+
+Retrieves a single card by ID with all associated metadata and file URLs.
+
+<CodeGroup>
+
+```typescript React
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function CardDetail({ cardId }: { cardId: Id<"cards"> }) {
+  const card = useQuery(api.card.getCard.getCard, { id: cardId });
+
+  if (!card) return <div>Card not found</div>;
+
+  return (
+    <div>
+      <h1>{card.content}</h1>
+      {card.fileUrl && <img src={card.fileUrl} />}
+      {card.thumbnailUrl && <img src={card.thumbnailUrl} />}
+      <p>Tags: {card.tags?.join(", ")}</p>
+    </div>
+  );
+}
+```
+
+```typescript Node.js
+import { ConvexHttpClient } from "convex/browser";
+
+const client = new ConvexHttpClient(process.env.CONVEX_URL);
+
+const card = await client.query(api.card.getCard.getCard, {
+  id: "jd7x2k8p9q5r6s7t8u9v0w1x2y3z4"
+});
+
+if (card) {
+  console.log(card.content);
+  console.log(card.fileUrl); // Signed URL, expires after some time
+}
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="id" type="Id<'cards'>" required>
+  The unique identifier of the card to retrieve.
+</ParamField>
+
+### Returns
+
+<ResponseField name="card" type="Card | null">
+  Returns the card object with all fields and generated file URLs, or `null` if:
+  - Card doesn't exist
+  - User is not authenticated
+  - User doesn't own the card (authorization check)
+  
+  <Expandable title="Card object fields">
+    <ResponseField name="_id" type="Id<'cards'>">
+      Unique card identifier
+    </ResponseField>
+    
+    <ResponseField name="_creationTime" type="number">
+      Convex system timestamp (milliseconds since epoch)
+    </ResponseField>
+    
+    <ResponseField name="userId" type="string">
+      ID of the user who created the card
+    </ResponseField>
+    
+    <ResponseField name="content" type="string">
+      Main card content
+    </ResponseField>
+    
+    <ResponseField name="type" type="CardType">
+      Card type: `text` | `link` | `image` | `video` | `audio` | `document` | `palette` | `quote`
+    </ResponseField>
+    
+    <ResponseField name="url" type="string">
+      Associated URL (for link cards)
+    </ResponseField>
+    
+    <ResponseField name="fileId" type="Id<'_storage'>">
+      Storage ID of the main file
+    </ResponseField>
+    
+    <ResponseField name="fileUrl" type="string">
+      Signed URL for accessing the file (auto-generated, temporary)
+    </ResponseField>
+    
+    <ResponseField name="thumbnailId" type="Id<'_storage'>">
+      Storage ID of the thumbnail image
+    </ResponseField>
+    
+    <ResponseField name="thumbnailUrl" type="string">
+      Signed URL for the thumbnail (auto-generated, temporary)
+    </ResponseField>
+    
+    <ResponseField name="screenshotUrl" type="string">
+      Signed URL for link preview screenshot (link cards only)
+    </ResponseField>
+    
+    <ResponseField name="linkPreviewImageUrl" type="string">
+      Signed URL for link preview image (link cards only)
+    </ResponseField>
+    
+    <ResponseField name="tags" type="string[]">
+      User-defined tags
+    </ResponseField>
+    
+    <ResponseField name="notes" type="string">
+      Additional notes
+    </ResponseField>
+    
+    <ResponseField name="isFavorited" type="boolean">
+      Whether card is marked as favorite
+    </ResponseField>
+    
+    <ResponseField name="isDeleted" type="boolean">
+      Soft delete flag
+    </ResponseField>
+    
+    <ResponseField name="deletedAt" type="number">
+      Timestamp when card was deleted
+    </ResponseField>
+    
+    <ResponseField name="metadata" type="object">
+      Card metadata including link preview and category data
+      
+      <Expandable title="Metadata structure">
+        <ResponseField name="linkPreview" type="object">
+          Open Graph and metadata for link cards
+          
+          - `title` - Page title
+          - `description` - Page description
+          - `imageUrl` - Original preview image URL
+          - `imageStorageId` - Stored preview image ID
+          - `siteName` - Site name (e.g., "GitHub")
+          - `author` - Page author
+          - `faviconUrl` - Site favicon
+          - `screenshotStorageId` - Full page screenshot ID
+          - `finalUrl` - Final URL after redirects
+          - `status` - `"success"` or `"error"`
+          - `error` - Error details if fetch failed
+        </ResponseField>
+        
+        <ResponseField name="linkCategory" type="object">
+          AI-detected category for link cards
+          
+          - `category` - Category name from predefined list
+          - `confidence` - Classification confidence (0-1)
+          - `detectedProvider` - Detected service/provider
+          - `sourceUrl` - Original link
+          - `imageUrl` - Category-specific image
+          - `facts` - Key facts array with label/value/icon
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="fileMetadata" type="object">
+      File-specific metadata
+      
+      - `fileName` - Original file name
+      - `fileSize` - File size in bytes
+      - `mimeType` - MIME type
+      - `duration` - Media duration (audio/video)
+      - `width` - Image/video width
+      - `height` - Image/video height
+      - `recordingTimestamp` - Recording timestamp
+    </ResponseField>
+    
+    <ResponseField name="metadataTitle" type="string">
+      Flattened title for search indexing
+    </ResponseField>
+    
+    <ResponseField name="metadataDescription" type="string">
+      Flattened description for search indexing
+    </ResponseField>
+    
+    <ResponseField name="aiTags" type="string[]">
+      AI-generated tags
+    </ResponseField>
+    
+    <ResponseField name="aiSummary" type="string">
+      AI-generated content summary
+    </ResponseField>
+    
+    <ResponseField name="aiTranscript" type="string">
+      AI-generated transcript (audio/video cards)
+    </ResponseField>
+    
+    <ResponseField name="visualStyles" type="string[]">
+      AI-detected visual styles (for image cards)
+    </ResponseField>
+    
+    <ResponseField name="colors" type="Color[]">
+      Color palette (for palette cards)
+    </ResponseField>
+    
+    <ResponseField name="colorHexes" type="string[]">
+      Extracted hex codes for color search
+    </ResponseField>
+    
+    <ResponseField name="colorHues" type="string[]">
+      Hue categories for color filtering
+    </ResponseField>
+    
+    <ResponseField name="processingStatus" type="object">
+      Current processing pipeline status
+      
+      <Expandable title="Processing stages">
+        Each stage has: `status`, `startedAt`, `completedAt`, `confidence`, `error`
+        
+        - `classify` - Type classification stage
+        - `categorize` - Category detection stage (links)
+        - `metadata` - AI metadata extraction stage
+        - `renderables` - Thumbnail generation stage
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="number">
+      Card creation timestamp (milliseconds)
+    </ResponseField>
+    
+    <ResponseField name="updatedAt" type="number">
+      Last update timestamp (milliseconds)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## getCards
+
+Retrieves a filtered list of cards with optional type and favorites filtering.
+
+<CodeGroup>
+
+```typescript React
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function CardList() {
+  const cards = useQuery(api.card.getCards.getCards, {
+    type: "link",
+    favoritesOnly: false,
+    limit: 50
+  });
+
+  return (
+    <div>
+      {cards?.map(card => (
+        <CardItem key={card._id} card={card} />
+      ))}
+    </div>
+  );
+}
+```
+
+```typescript Favorites
+// Get only favorited cards
+const favorites = useQuery(api.card.getCards.getCards, {
+  favoritesOnly: true,
+  limit: 20
+});
+```
+
+```typescript Filter by Type
+// Get all image cards
+const images = useQuery(api.card.getCards.getCards, {
+  type: "image",
+  limit: 100
+});
+```
+
+```typescript All Cards
+// Get all cards (default)
+const allCards = useQuery(api.card.getCards.getCards, {});
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="type" type="CardType">
+  Filter cards by type. If omitted, returns all types.
+  
+  Values: `text` | `link` | `image` | `video` | `audio` | `document` | `palette` | `quote`
+</ParamField>
+
+<ParamField path="favoritesOnly" type="boolean" default={false}>
+  If `true`, returns only cards marked as favorites.
+</ParamField>
+
+<ParamField path="limit" type="number" default={50}>
+  Maximum number of cards to return. Cards are returned in descending creation order (newest first).
+</ParamField>
+
+### Returns
+
+<ResponseField name="cards" type="Card[]">
+  Array of card objects matching the filter criteria. Returns empty array if:
+  - User is not authenticated
+  - No cards match the filters
+  
+  Each card includes all fields from `getCard` response, including auto-generated file URLs.
+</ResponseField>
+
+### Behavior
+
+<AccordionGroup>
+  <Accordion title="Index Optimization">
+    Uses compound indexes to avoid post-query filtering:
+    
+    - **Type filter**: Uses `by_user_type_deleted` index
+    - **Favorites filter**: Uses `by_user_favorites_deleted` index
+    - **No filters**: Uses `by_user_deleted` index
+    
+    All queries exclude deleted cards by default (`isDeleted: undefined`).
+  </Accordion>
+  
+  <Accordion title="File URL Generation">
+    Generates temporary signed URLs for:
+    
+    - `fileUrl` - Main file (if `fileId` exists)
+    - `thumbnailUrl` - Thumbnail image (if `thumbnailId` exists)
+    - `screenshotUrl` - Link preview screenshot (if stored)
+    - `linkPreviewImageUrl` - Link preview image (if stored)
+    
+    URLs are generated via `ctx.storage.getUrl()` and expire after a period.
+  </Accordion>
+  
+  <Accordion title="Quote Formatting">
+    Applies display formatting to quote cards via `applyQuoteFormattingToList()`:
+    
+    - Restores quotation marks for display
+    - Preserves original normalized content in database
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## getDeletedCards
+
+Retrieves soft-deleted cards (trash/recycle bin).
+
+<CodeGroup>
+
+```typescript React
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function TrashBin() {
+  const deletedCards = useQuery(api.card.getCard.getDeletedCards, {
+    limit: 50
+  });
+
+  return (
+    <div>
+      <h2>Trash ({deletedCards?.length})</h2>
+      {deletedCards?.map(card => (
+        <DeletedCardItem key={card._id} card={card} />
+      ))}
+    </div>
+  );
+}
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="limit" type="number" default={50}>
+  Maximum number of deleted cards to return. Ordered by deletion date (newest first).
+</ParamField>
+
+### Returns
+
+<ResponseField name="deletedCards" type="Card[]">
+  Array of soft-deleted cards. Returns empty array if user is not authenticated or no deleted cards exist.
+</ResponseField>
+
+### Source References
+
+- `getCard`: `packages/convex/card/getCard.ts:20`
+- `getCards`: `packages/convex/card/getCards.ts:45`
+- `getDeletedCards`: `packages/convex/card/getCard.ts:60`

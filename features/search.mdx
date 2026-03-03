@@ -1,0 +1,542 @@
+---
+title: Full-Text Search
+description: Powerful search capabilities across all your cards and metadata
+---
+
+# Full-Text Search
+
+Teak provides comprehensive full-text search across all card content, metadata, and AI-generated fields. Search is powered by Convex's built-in search indexes with intelligent query optimization.
+
+## Search Fields
+
+Search queries scan across multiple fields simultaneously:
+
+### Primary Content Fields
+
+- **content** - Main card text, descriptions, captions
+- **notes** - User annotations and additional context
+
+### Metadata Fields
+
+- **metadataTitle** - Link preview titles, file names
+- **metadataDescription** - Link preview descriptions, summaries
+
+### AI-Generated Fields
+
+- **aiSummary** - AI-generated content summaries
+- **aiTranscript** - Speech-to-text transcriptions from audio/video
+- **aiTags** - Auto-extracted topic tags
+
+### Organizational Fields
+
+- **tags** - User-defined tags
+- **visualStyles** - Visual style classifications (minimal, vibrant, etc.)
+- **colorHexes** - Color palette hex codes
+- **colorHues** - Color hue categories (red, blue, green, etc.)
+
+## Search Indexes
+
+Teak maintains dedicated search indexes for each searchable field:
+
+```typescript
+// Schema definition
+.searchIndex("search_content", {
+  searchField: "content",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_notes", {
+  searchField: "notes",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_ai_summary", {
+  searchField: "aiSummary",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_ai_transcript", {
+  searchField: "aiTranscript",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_metadata_title", {
+  searchField: "metadataTitle",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_metadata_description", {
+  searchField: "metadataDescription",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_tags", {
+  searchField: "tags",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+.searchIndex("search_ai_tags", {
+  searchField: "aiTags",
+  filterFields: ["userId", "isDeleted", "type", "isFavorited"],
+})
+```
+
+<Info>
+Each search index supports filtering by user, deletion status, card type, and favorite status for efficient, scoped queries.
+</Info>
+
+## Query Syntax
+
+Search uses case-insensitive keyword matching:
+
+```typescript
+// Search for cards containing "design system"
+const results = await ctx.db
+  .query("cards")
+  .withSearchIndex("search_content", (q) =>
+    q.search("content", "design system")
+     .eq("userId", userId)
+     .eq("isDeleted", undefined)
+  )
+  .take(50);
+```
+
+### Multi-Word Queries
+
+Multiple words are treated as separate search terms:
+
+- `"design system"` - Matches cards containing both "design" AND "system"
+- `"react hooks"` - Matches cards with both words (in any order)
+
+### Tag Filtering
+
+For tags, search supports partial matching:
+
+```typescript
+// Search tags for "java"
+const searchTerms = "java".toLowerCase().split(/\s+/);
+const allCards = await ctx.db
+  .query("cards")
+  .withIndex("by_user_deleted", (q) =>
+    q.eq("userId", userId).eq("isDeleted", undefined)
+  )
+  .take(100);
+
+const matches = allCards.filter((card) =>
+  card.tags?.some((tag) =>
+    searchTerms.some((term) => tag.toLowerCase().includes(term))
+  )
+);
+```
+
+This matches:
+- `"javascript"`
+- `"java"`
+- `"Java Programming"`
+
+## Search Implementation
+
+The `searchCards` query implements intelligent multi-index search:
+
+### Basic Search Flow
+
+1. **Query normalization**: Trim and lowercase the search query
+2. **Keyword detection**: Check for special keywords (favorites, trash)
+3. **Multi-index search**: Query all relevant search indexes in parallel
+4. **Deduplication**: Combine results and remove duplicates
+5. **Filter application**: Apply type, favorites, and date filters
+6. **Sorting**: Order by creation date (newest first)
+7. **Limiting**: Return top N results
+
+### Special Keywords
+
+Certain keywords trigger specialized queries:
+
+```typescript
+// "favorites" keyword
+if (["fav", "favs", "favorites", "favourite", "favourites"].includes(query)) {
+  const favorites = await ctx.db
+    .query("cards")
+    .withIndex("by_user_favorites_deleted", (q) =>
+      q.eq("userId", userId)
+       .eq("isFavorited", true)
+       .eq("isDeleted", undefined)
+    )
+    .order("desc")
+    .take(limit);
+  return favorites;
+}
+
+// "trash" keyword
+if (["trash", "deleted", "bin", "recycle", "trashed"].includes(query)) {
+  const trashed = await ctx.db
+    .query("cards")
+    .withIndex("by_user_deleted", (q) =>
+      q.eq("userId", userId).eq("isDeleted", true)
+    )
+    .order("desc")
+    .take(limit);
+  return trashed;
+}
+```
+
+### Parallel Multi-Index Search
+
+All search indexes are queried simultaneously for speed:
+
+```typescript
+const searchResults = await Promise.all([
+  // Search content
+  ctx.db.query("cards")
+    .withSearchIndex("search_content", (q) =>
+      q.search("content", searchQuery)
+       .eq("userId", userId)
+       .eq("isDeleted", showTrashOnly ? true : undefined)
+    ).take(limit),
+  
+  // Search notes
+  ctx.db.query("cards")
+    .withSearchIndex("search_notes", (q) =>
+      q.search("notes", searchQuery)
+       .eq("userId", userId)
+       .eq("isDeleted", showTrashOnly ? true : undefined)
+    ).take(limit),
+  
+  // Search AI summary
+  ctx.db.query("cards")
+    .withSearchIndex("search_ai_summary", (q) =>
+      q.search("aiSummary", searchQuery)
+       .eq("userId", userId)
+       .eq("isDeleted", showTrashOnly ? true : undefined)
+    ).take(limit),
+  
+  // ... more search indexes
+]);
+
+// Combine and deduplicate
+const uniqueResults = Array.from(
+  new Map(searchResults.flat().map((card) => [card._id, card])).values()
+);
+```
+
+<Note>
+Search queries are automatically scoped to the authenticated user - you'll never see another user's cards.
+</Note>
+
+## Filtering
+
+Search can be combined with powerful filters:
+
+### By Card Type
+
+```typescript
+// Search only image cards
+const results = await searchCards({
+  searchQuery: "landscape",
+  types: ["image"],
+  limit: 50
+});
+
+// Search across multiple types
+const results = await searchCards({
+  searchQuery: "tutorial",
+  types: ["link", "video", "document"],
+  limit: 50
+});
+```
+
+### By Favorite Status
+
+```typescript
+// Search only favorited cards
+const results = await searchCards({
+  searchQuery: "design patterns",
+  favoritesOnly: true,
+  limit: 50
+});
+```
+
+### By Date Range
+
+```typescript
+// Search cards created in the last 30 days
+const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+const results = await searchCards({
+  searchQuery: "react",
+  createdAtRange: {
+    start: thirtyDaysAgo,
+    end: Date.now()
+  },
+  limit: 50
+});
+```
+
+### By Visual Styles
+
+```typescript
+// Search for minimal, monochrome images
+const results = await searchCards({
+  searchQuery: "architecture",
+  types: ["image"],
+  styleFilters: ["minimal", "monochrome"],
+  limit: 50
+});
+```
+
+### By Color Hues
+
+```typescript
+// Search for images with blue tones
+const results = await searchCards({
+  types: ["image"],
+  hueFilters: ["blue", "cyan"],
+  limit: 50
+});
+```
+
+### By Hex Colors
+
+```typescript
+// Search for specific color palette
+const results = await searchCards({
+  types: ["image", "palette"],
+  hexFilters: ["#8B7355", "#D4A574"],
+  limit: 50
+});
+```
+
+## Pagination
+
+For large result sets, use paginated search:
+
+```typescript
+export const searchCardsPaginated = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    searchQuery: v.optional(v.string()),
+    types: v.optional(v.array(cardTypeValidator)),
+    favoritesOnly: v.optional(v.boolean()),
+    styleFilters: v.optional(v.array(v.string())),
+    // ... other filters
+  },
+  handler: async (ctx, args) => {
+    // Returns: { page, isDone, continueCursor }
+  }
+});
+```
+
+### Pagination Response
+
+```typescript
+{
+  page: Card[],              // Current page of results
+  isDone: boolean,           // True if this is the last page
+  continueCursor: string | null  // Pass to next query for next page
+}
+```
+
+### Usage Example
+
+```typescript
+// First page
+const firstPage = await searchCardsPaginated({
+  paginationOpts: { numItems: 20, cursor: null },
+  searchQuery: "javascript",
+  types: ["link", "document"]
+});
+
+// Next page
+if (!firstPage.isDone) {
+  const secondPage = await searchCardsPaginated({
+    paginationOpts: {
+      numItems: 20,
+      cursor: firstPage.continueCursor
+    },
+    searchQuery: "javascript",
+    types: ["link", "document"]
+  });
+}
+```
+
+## Search Optimization
+
+### Index Selection Strategy
+
+For paginated searches, indexes are queried in order of selectivity:
+
+```typescript
+const queryBatches = [
+  // Batch 1: Most selective
+  [
+    () => searchContent(),
+    () => searchMetadataTitle(),
+    () => searchNotes()
+  ],
+  // Batch 2: Medium selectivity
+  [
+    () => searchMetadataDescription(),
+    () => searchAiSummary(),
+    () => searchAiTranscript()
+  ],
+  // Batch 3: Least selective
+  [
+    () => searchTags(),
+    () => searchAiTags()
+  ]
+];
+```
+
+### Early Termination
+
+Search stops once enough results are found:
+
+```typescript
+for (const batch of queryBatches) {
+  const batchResults = await Promise.all(batch);
+  for (const results of batchResults) {
+    for (const card of results) {
+      if (!seenIds.has(card._id)) {
+        seenIds.add(card._id);
+        uniqueResults.push(card);
+        if (uniqueResults.length >= desiredLimit) break;
+      }
+    }
+    if (uniqueResults.length >= desiredLimit) break;
+  }
+  if (uniqueResults.length >= desiredLimit) break;
+}
+```
+
+This avoids querying less-selective indexes when sufficient results are found in more-selective ones.
+
+### Type-Specific Optimization
+
+Some search indexes are only queried for relevant card types:
+
+```typescript
+const includeAiTranscript = noTypeFilter || typesSet.has("audio");
+const includeAiSummary = noTypeFilter ||
+  ["audio", "video", "document", "image", "link"].some(t => typesSet.has(t));
+```
+
+This skips irrelevant indexes:
+- `aiTranscript` is only searched when looking for audio cards
+- `aiSummary` is skipped for text/quote/palette cards
+
+## Performance Characteristics
+
+### Search Index Limits
+
+- Each search index query returns up to `limit` results (typically 50-100)
+- Deduplication happens in-memory after fetching
+- Results are sorted by creation date (descending)
+
+### Filter Efficiency
+
+**Efficient** (uses indexes):
+- User scoping (`userId`)
+- Deletion status (`isDeleted`)
+- Single type filter
+- Single favorite filter
+
+**Less Efficient** (requires post-index filtering):
+- Multiple type filters (OR condition)
+- Visual style filters
+- Color hue/hex filters
+- Date range filters (when combined with other filters)
+
+<Warning>
+For visual filters (styles, hues, hexes) without a search query, Teak uses specialized facet queries that over-fetch results and filter in-memory. This maintains responsiveness but may be slower for large collections.
+</Warning>
+
+## Visual Facet Queries
+
+When searching by visual properties alone:
+
+```typescript
+if (visualFilters.hasVisualFilters) {
+  const visualResults = await runVisualFacetQueries(ctx, {
+    userId: user.subject,
+    showTrashOnly,
+    types,
+    favoritesOnly,
+    createdAtRange,
+    visualFilters,
+    limit: Math.max(limit * 3, limit + 40)  // Over-fetch for filtering
+  });
+  // Filter in-memory for exact matches
+  const filtered = visualResults.filter(card =>
+    doesCardMatchVisualFilters(card, visualFilters)
+  );
+  return filtered.slice(0, limit);
+}
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Basic Search">
+    ```typescript
+    // Search all fields for "react hooks"
+    const results = await searchCards({
+      searchQuery: "react hooks",
+      limit: 50
+    });
+    ```
+  </Tab>
+  <Tab title="Type Filter">
+    ```typescript
+    // Search only links and documents
+    const results = await searchCards({
+      searchQuery: "typescript",
+      types: ["link", "document"],
+      limit: 50
+    });
+    ```
+  </Tab>
+  <Tab title="Visual Search">
+    ```typescript
+    // Find minimal, monochrome images
+    const results = await searchCards({
+      types: ["image"],
+      styleFilters: ["minimal", "monochrome"],
+      hueFilters: ["neutral"],
+      limit: 50
+    });
+    ```
+  </Tab>
+  <Tab title="Color Search">
+    ```typescript
+    // Find cards with specific colors
+    const results = await searchCards({
+      types: ["image", "palette"],
+      hexFilters: ["#8B7355"],
+      limit: 50
+    });
+    ```
+  </Tab>
+  <Tab title="Date Range">
+    ```typescript
+    // Recent favorites
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const results = await searchCards({
+      favoritesOnly: true,
+      createdAtRange: {
+        start: sevenDaysAgo,
+        end: Date.now()
+      },
+      limit: 50
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Organization" icon="folder" href="/features/organization">
+    Learn about tags, favorites, and filters
+  </Card>
+  <Card title="AI Processing" icon="sparkles" href="/features/ai-processing">
+    Understand AI-generated searchable fields
+  </Card>
+  <Card title="Card Types" icon="grid" href="/features/card-types">
+    Explore type-specific search fields
+  </Card>
+  <Card title="Searching Guide" icon="book" href="/guides/searching">
+    Advanced search techniques and tips
+  </Card>
+</CardGroup>

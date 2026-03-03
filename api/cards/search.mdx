@@ -1,0 +1,542 @@
+---
+title: Search Cards
+description: Full-text search and advanced filtering with pagination support
+---
+
+## searchCards
+
+Performs full-text search across card content, metadata, and AI-generated fields with advanced filtering capabilities.
+
+<CodeGroup>
+
+```typescript React
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function SearchResults() {
+  const results = useQuery(api.card.getCards.searchCards, {
+    searchQuery: "design system",
+    types: ["link", "image"],
+    favoritesOnly: false,
+    limit: 50
+  });
+
+  return (
+    <div>
+      {results?.map(card => (
+        <CardItem key={card._id} card={card} />
+      ))}
+    </div>
+  );
+}
+```
+
+```typescript Search with Filters
+// Search with type and favorite filters
+const results = await searchCards({
+  searchQuery: "typescript tutorial",
+  types: ["link"],
+  favoritesOnly: true,
+  limit: 20
+});
+```
+
+```typescript Visual Filters
+// Search by visual attributes (colors and styles)
+const colorResults = await searchCards({
+  hueFilters: ["red", "blue"],
+  hexFilters: ["#FF5733"],
+  styleFilters: ["minimal", "modern"],
+  types: ["image", "palette"]
+});
+```
+
+```typescript Date Range
+// Search within date range
+const recentCards = await searchCards({
+  searchQuery: "project notes",
+  createdAtRange: {
+    start: Date.now() - 30 * 24 * 60 * 60 * 1000, // 30 days ago
+    end: Date.now()
+  }
+});
+```
+
+```typescript Trash Search
+// Search deleted cards only
+const deletedResults = await searchCards({
+  searchQuery: "old draft",
+  showTrashOnly: true
+});
+```
+
+```typescript Special Keywords
+// Use special search keywords
+const favorites = await searchCards({
+  searchQuery: "fav" // Returns all favorites
+});
+
+const trash = await searchCards({
+  searchQuery: "trash" // Returns all deleted cards
+});
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="searchQuery" type="string">
+  Full-text search query. Searches across multiple fields:
+  
+  - Card content
+  - Notes
+  - AI summary
+  - AI transcript (audio/video cards)
+  - Metadata title (link cards)
+  - Metadata description (link cards)
+  - User tags
+  - AI tags
+  
+  **Special keywords**:
+  - `"fav"`, `"favs"`, `"favorites"` - Returns all favorited cards
+  - `"trash"`, `"deleted"`, `"bin"` - Returns all deleted cards
+  
+  If omitted, returns cards based on other filters only.
+</ParamField>
+
+<ParamField path="types" type="CardType[]">
+  Filter by one or more card types.
+  
+  ```typescript
+  types: ["link", "image", "video"]
+  ```
+  
+  Available types: `text`, `link`, `image`, `video`, `audio`, `document`, `palette`, `quote`
+</ParamField>
+
+<ParamField path="favoritesOnly" type="boolean" default={false}>
+  If `true`, returns only cards marked as favorites.
+</ParamField>
+
+<ParamField path="showTrashOnly" type="boolean" default={false}>
+  If `true`, returns only soft-deleted cards. Mutually exclusive with normal card queries.
+</ParamField>
+
+<ParamField path="styleFilters" type="string[]">
+  Filter by AI-detected visual styles. Only applicable to image and palette cards.
+  
+  ```typescript
+  styleFilters: ["minimal", "modern", "vintage"]
+  ```
+  
+  Common values: `"minimal"`, `"modern"`, `"vintage"`, `"abstract"`, `"geometric"`, etc.
+</ParamField>
+
+<ParamField path="hueFilters" type="string[]">
+  Filter by color hue categories.
+  
+  ```typescript
+  hueFilters: ["red", "blue", "green"]
+  ```
+  
+  Available hues: `"red"`, `"orange"`, `"yellow"`, `"green"`, `"blue"`, `"purple"`, `"pink"`, `"brown"`, `"gray"`, `"black"`, `"white"`
+</ParamField>
+
+<ParamField path="hexFilters" type="string[]">
+  Filter by exact hex color codes.
+  
+  ```typescript
+  hexFilters: ["#FF5733", "#33FF57"]
+  ```
+  
+  Useful for finding cards with specific brand colors.
+</ParamField>
+
+<ParamField path="createdAtRange" type="object">
+  Filter by creation date range.
+  
+  <Expandable title="Range object structure">
+    <ParamField path="start" type="number" required>
+      Start timestamp (milliseconds since epoch)
+    </ParamField>
+    
+    <ParamField path="end" type="number" required>
+      End timestamp (milliseconds since epoch)
+    </ParamField>
+  </Expandable>
+  
+  ```typescript
+  createdAtRange: {
+    start: new Date("2024-01-01").getTime(),
+    end: new Date("2024-12-31").getTime()
+  }
+  ```
+</ParamField>
+
+<ParamField path="limit" type="number" default={50}>
+  Maximum number of cards to return. Results are sorted by creation date (newest first).
+</ParamField>
+
+### Returns
+
+<ResponseField name="cards" type="Card[]">
+  Array of cards matching the search criteria. Each card includes:
+  
+  - All standard card fields
+  - Auto-generated file URLs (`fileUrl`, `thumbnailUrl`, etc.)
+  - Quote formatting applied for display
+  
+  Returns empty array if:
+  - User is not authenticated
+  - No cards match the filters
+  - Search query has no results
+</ResponseField>
+
+### Search Behavior
+
+<AccordionGroup>
+  <Accordion title="Multi-Field Search">
+    When a `searchQuery` is provided, the function searches across:
+    
+    1. **Content** - Main card content (search_content index)
+    2. **Notes** - User notes (search_notes index)
+    3. **AI Summary** - AI-generated summaries (search_ai_summary index)
+    4. **AI Transcript** - Transcripts for audio/video (search_ai_transcript index)
+    5. **Metadata Title** - Link preview titles (search_metadata_title index)
+    6. **Metadata Description** - Link descriptions (search_metadata_description index)
+    7. **Tags** - User-defined tags (JavaScript filter)
+    8. **AI Tags** - AI-generated tags (JavaScript filter)
+    
+    Results are combined, deduplicated by card ID, and sorted by creation date.
+  </Accordion>
+  
+  <Accordion title="Index Optimization">
+    Uses Convex search indexes for efficient full-text search:
+    
+    ```typescript
+    // Example: Content search
+    ctx.db
+      .query("cards")
+      .withSearchIndex("search_content", (q) =>
+        q.search("content", searchQuery)
+         .eq("userId", user.subject)
+         .eq("isDeleted", showTrashOnly ? true : undefined)
+      )
+      .take(limit)
+    ```
+    
+    Each search index filters by:
+    - `userId` - Only current user's cards
+    - `isDeleted` - Normal vs. deleted cards
+    - `type` (if single type filter)
+    - `isFavorited` (if favorites only)
+  </Accordion>
+  
+  <Accordion title="Visual Filter Queries">
+    When visual filters are present (styles, hues, or hex colors):
+    
+    1. Uses dedicated facet indexes: `search_visual_styles`, `search_color_hexes`, `search_color_hues`
+    2. Runs parallel queries for each filter type
+    3. Intersects results to find cards matching all filters
+    4. Over-fetches (`limit * 3`) to account for filtering
+    
+    ```typescript
+    // Example: Color hue filter
+    ctx.db
+      .query("cards")
+      .withSearchIndex("search_color_hues", (q) =>
+        q.search("colorHues", "red")
+         .eq("userId", user.subject)
+      )
+      .take(limit * 3)
+    ```
+  </Accordion>
+  
+  <Accordion title="Date Range Optimization">
+    When `createdAtRange` is specified:
+    
+    1. Uses `by_created` index for efficient range queries
+    2. Applies deletion filter via `.filter()` (not index)
+    3. Type filters applied as OR conditions in post-query filter
+    
+    ```typescript
+    ctx.db
+      .query("cards")
+      .withIndex("by_created", (q) =>
+        q.eq("userId", user.subject)
+         .gte("createdAt", range.start)
+         .lt("createdAt", range.end)
+      )
+    ```
+  </Accordion>
+  
+  <Accordion title="Special Keyword Handling">
+    Certain search terms trigger optimized queries:
+    
+    - **Favorites**: `"fav"`, `"favs"`, `"favorites"`, `"favourite"`, `"favourites"`
+      - Uses `by_user_favorites_deleted` index
+      - Returns all favorited cards regardless of content
+    
+    - **Trash**: `"trash"`, `"deleted"`, `"bin"`, `"recycle"`, `"trashed"`
+      - Uses `by_user_deleted` index with `isDeleted: true`
+      - Returns all deleted cards
+    
+    These keywords bypass normal search and apply other filters on top.
+  </Accordion>
+  
+  <Accordion title="Deduplication">
+    When searching across multiple indexes:
+    
+    1. Results from all searches are combined into a flat array
+    2. Duplicates are removed using a Map keyed by card ID
+    3. Additional filters (type, favorites, date range) are applied
+    4. Results are sorted by `createdAt` descending
+    5. Limited to requested `limit`
+    
+    ```typescript
+    const uniqueResults = Array.from(
+      new Map(allResults.map(card => [card._id, card])).values()
+    );
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## searchCardsPaginated
+
+Paginated version of `searchCards` for loading large result sets incrementally.
+
+<CodeGroup>
+
+```typescript React with Pagination
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+import { useState } from "react";
+
+function InfiniteCardList() {
+  const [cursor, setCursor] = useState<string | null>(null);
+  
+  const result = useQuery(api.card.getCards.searchCardsPaginated, {
+    paginationOpts: {
+      numItems: 20,
+      cursor: cursor
+    },
+    searchQuery: "design",
+    types: ["link", "image"]
+  });
+
+  const loadMore = () => {
+    if (result && !result.isDone) {
+      setCursor(result.continueCursor);
+    }
+  };
+
+  return (
+    <div>
+      {result?.page.map(card => (
+        <CardItem key={card._id} card={card} />
+      ))}
+      {!result?.isDone && (
+        <button onClick={loadMore}>Load More</button>
+      )}
+    </div>
+  );
+}
+```
+
+```typescript Initial Load
+// First page
+const firstPage = await searchCardsPaginated({
+  paginationOpts: { numItems: 20, cursor: null },
+  searchQuery: "typescript"
+});
+
+console.log(firstPage.page); // Array of 20 cards
+console.log(firstPage.isDone); // false if more results
+console.log(firstPage.continueCursor); // Cursor for next page
+```
+
+```typescript Next Page
+// Load next page
+const nextPage = await searchCardsPaginated({
+  paginationOpts: {
+    numItems: 20,
+    cursor: firstPage.continueCursor
+  },
+  searchQuery: "typescript"
+});
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="paginationOpts" type="object" required>
+  Pagination configuration object.
+  
+  <Expandable title="Pagination options">
+    <ParamField path="numItems" type="number" required>
+      Number of items to return per page.
+    </ParamField>
+    
+    <ParamField path="cursor" type="string | null" required>
+      Cursor for pagination. Use `null` for the first page, then use `continueCursor` from previous response.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+All other arguments are the same as `searchCards`:
+- `searchQuery`, `types`, `favoritesOnly`, `showTrashOnly`
+- `styleFilters`, `hueFilters`, `hexFilters`
+- `createdAtRange`
+
+### Returns
+
+<ResponseField name="result" type="object">
+  Pagination result object.
+  
+  <Expandable title="Result structure">
+    <ResponseField name="page" type="Card[]">
+      Array of cards for the current page. Length is `≤ numItems`.
+    </ResponseField>
+    
+    <ResponseField name="isDone" type="boolean">
+      `true` if this is the last page, `false` if more results exist.
+    </ResponseField>
+    
+    <ResponseField name="continueCursor" type="string | null">
+      Cursor to fetch the next page. `null` if `isDone` is `true`.
+    </ResponseField>
+    
+    <ResponseField name="splitCursor" type="string | null">
+      Optional split cursor for advanced pagination strategies.
+    </ResponseField>
+    
+    <ResponseField name="pageStatus" type="string | null">
+      Optional status: `"SplitRecommended"` | `"SplitRequired"` | `null`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Pagination Behavior
+
+<AccordionGroup>
+  <Accordion title="Cursor-Based Pagination">
+    For visual filters and search queries:
+    
+    1. Cursor is a stringified offset number (e.g., `"0"`, `"20"`, `"40"`)
+    2. First page: `cursor: null` → starts at offset 0
+    3. Next page: `cursor: "20"` → starts at offset 20
+    4. Cursor increments by `numItems` each page
+    
+    ```typescript
+    // Internal implementation
+    const rawCursor = paginationOpts.cursor ?? "0";
+    const offset = Number(rawCursor) || 0;
+    const page = results.slice(offset, offset + numItems);
+    const continueCursor = isDone ? null : String(offset + numItems);
+    ```
+  </Accordion>
+  
+  <Accordion title="Index-Based Pagination">
+    When using Convex indexes (no search query, no visual filters):
+    
+    Uses native Convex pagination:
+    ```typescript
+    const result = await query
+      .order("desc")
+      .paginate(paginationOpts);
+    ```
+    
+    Cursor is opaque and managed by Convex internally.
+  </Accordion>
+  
+  <Accordion title="Search Result Pagination">
+    For search queries with text search:
+    
+    1. Runs all search index queries in batches
+    2. Deduplicates results incrementally
+    3. Applies filters and sorting
+    4. Slices to offset and page size
+    5. Returns cursor as stringified offset
+    
+    **Early termination**: Stops searching once enough results are found:
+    ```typescript
+    if (uniqueResults.length >= desiredLimit) break;
+    ```
+  </Accordion>
+  
+  <Accordion title="Performance Optimization">
+    The function adjusts fetch limits based on page size:
+    
+    - Search queries: `searchLimit = max(offset + pageSize + 20, pageSize)`
+    - Visual filters: `limit = max(desiredLimit * 2, desiredLimit + 40)`
+    - Tag searches: `tagSearchLimit = max(searchLimit + 20, searchLimit + 1)`
+    
+    This over-fetching compensates for filtering and ensures full pages.
+  </Accordion>
+</AccordionGroup>
+
+### Example: Infinite Scroll
+
+```typescript
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+import { useState } from "react";
+
+function InfiniteScrollCards() {
+  const [allCards, setAllCards] = useState<Card[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const result = useQuery(
+    !isLoading ? api.card.getCards.searchCardsPaginated : undefined,
+    !isLoading ? {
+      paginationOpts: { numItems: 50, cursor },
+      searchQuery: searchTerm,
+      types: selectedTypes
+    } : "skip"
+  );
+  
+  useEffect(() => {
+    if (result) {
+      setAllCards(prev => [...prev, ...result.page]);
+      setIsLoading(false);
+    }
+  }, [result]);
+  
+  const loadMore = () => {
+    if (result && !result.isDone) {
+      setIsLoading(true);
+      setCursor(result.continueCursor);
+    }
+  };
+  
+  // Trigger load more on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const bottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 500;
+      if (bottom && !isLoading && result && !result.isDone) {
+        loadMore();
+      }
+    };
+    
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isLoading, result]);
+  
+  return (
+    <div>
+      {allCards.map(card => <CardItem key={card._id} card={card} />)}
+      {isLoading && <LoadingSpinner />}
+      {result?.isDone && <div>No more cards</div>}
+    </div>
+  );
+}
+```
+
+### Source References
+
+- `searchCards`: `packages/convex/card/getCards.ts:96`
+- `searchCardsPaginated`: `packages/convex/card/getCards.ts:400`

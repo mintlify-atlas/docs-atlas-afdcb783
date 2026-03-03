@@ -1,0 +1,352 @@
+---
+title: System Architecture
+description: Overview of Teak's client-server architecture with Convex backend
+---
+
+Teak follows a client-server architecture with multiple client applications (Web, Mobile, Desktop, Extension) connecting to a centralized Convex backend for real-time data synchronization and AI processing.
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Client Applications                       │
+├──────────────┬──────────────┬──────────────┬───────────────────┤
+│   Web App    │  Mobile App  │ Desktop App  │ Browser Extension │
+│  (Next.js)   │   (Expo)     │   (Tauri)    │      (Wxt)        │
+└──────┬───────┴──────┬───────┴──────┬───────┴───────┬───────────┘
+       │              │              │               │
+       └──────────────┴──────────────┴───────────────┘
+                           ↓
+              ┌────────────────────────┐
+              │  ConvexClientProvider  │
+              │ + QueryCacheProvider   │
+              └────────────┬───────────┘
+                           ↓
+              ┌────────────────────────┐
+              │    Convex Backend      │
+              ├────────────────────────┤
+              │  • Real-time Queries   │
+              │  • Mutations           │
+              │  • Actions             │
+              │  • Workflows           │
+              │  • File Storage        │
+              └────────────┬───────────┘
+                           ↓
+              ┌────────────────────────┐
+              │   Database Tables      │
+              │  • cards               │
+              │  • apiKeys             │
+              │  • desktopAuthCodes    │
+              │  • _storage (system)   │
+              └────────────────────────┘
+```
+
+## Client Applications
+
+Teak provides multiple client surfaces for different use cases:
+
+<CardGroup cols={2}>
+  <Card title="Web App" icon="browser" href="/platforms/web">
+    Next.js application with App Router and shadcn/ui components
+  </Card>
+  <Card title="Mobile App" icon="mobile" href="/platforms/mobile">
+    Expo React Native app for iOS and Android
+  </Card>
+  <Card title="Desktop App" icon="desktop" href="/platforms/desktop">
+    Tauri v2 application with Rust backend and React frontend
+  </Card>
+  <Card title="Browser Extension" icon="puzzle" href="/platforms/extension">
+    Chrome extension built with Wxt for quick link saving
+  </Card>
+</CardGroup>
+
+## Real-time Data Synchronization
+
+All client applications use Convex's real-time data layer with optimized query caching:
+
+### ConvexQueryCacheProvider
+
+The `ConvexQueryCacheProvider` from `convex-helpers/react/cache` wraps all client applications to provide:
+
+- **Real-time updates**: Changes propagate automatically to all connected clients
+- **Optimistic updates**: UI updates immediately while mutations process
+- **Smart caching**: Queries are cached and deduplicated across components
+- **Automatic revalidation**: Cache invalidates when underlying data changes
+
+```tsx
+import { ConvexProvider } from "convex/react";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache";
+import { ConvexClientProvider } from "@teak/convex";
+
+function App({ children }) {
+  return (
+    <ConvexClientProvider>
+      <ConvexQueryCacheProvider>
+        {children}
+      </ConvexQueryCacheProvider>
+    </ConvexClientProvider>
+  );
+}
+```
+
+### Query Pattern
+
+Components use the `useQuery` hook to subscribe to real-time data:
+
+```tsx
+import { useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function CardsList() {
+  const cards = useQuery(api.cards.list, { limit: 50 });
+  
+  if (!cards) return <LoadingSpinner />;
+  
+  return (
+    <div>
+      {cards.map(card => (
+        <CardPreview key={card._id} card={card} />
+      ))}
+    </div>
+  );
+}
+```
+
+### Mutation Pattern
+
+Mutations trigger optimistic UI updates and real-time synchronization:
+
+```tsx
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function AddCardButton() {
+  const createCard = useMutation(api.cards.create);
+  
+  const handleAdd = async () => {
+    await createCard({
+      content: "New idea",
+      type: "text"
+    });
+    // UI updates automatically via real-time query subscription
+  };
+  
+  return <button onClick={handleAdd}>Add Card</button>;
+}
+```
+
+## Authentication Flow
+
+Teak uses [Better Auth](https://www.better-auth.com/) integrated with Convex:
+
+```
+┌──────────────┐
+│   Client     │
+└──────┬───────┘
+       │
+       │ 1. Sign in/Sign up
+       ↓
+┌──────────────────┐
+│  Better Auth     │
+│  (auth.ts)       │
+└──────┬───────────┘
+       │
+       │ 2. Create session
+       ↓
+┌──────────────────┐
+│ Session Token    │
+└──────┬───────────┘
+       │
+       │ 3. Include in requests
+       ↓
+┌──────────────────┐
+│ Convex Backend   │
+│ (@convex-dev/    │
+│  better-auth)    │
+└──────┬───────────┘
+       │
+       │ 4. Verify & authorize
+       ↓
+┌──────────────────┐
+│ Protected Query/ │
+│ Mutation/Action  │
+└──────────────────┘
+```
+
+### Session Management
+
+- Better Auth manages user sessions and tokens
+- `@convex-dev/better-auth` integration validates sessions in Convex functions
+- Sessions automatically flow from client to backend
+- All queries/mutations have access to authenticated user context
+
+```ts
+import { mutation } from "./_generated/server";
+import { getCurrentUser } from "@convex-dev/better-auth/convex";
+
+export const createCard = mutation({
+  args: { content: v.string(), type: cardTypeValidator },
+  returns: v.id("cards"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) throw new Error("Unauthorized");
+    
+    return await ctx.db.insert("cards", {
+      userId: user.id,
+      content: args.content,
+      type: args.type,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+```
+
+## Convex Backend
+
+The Convex backend (`packages/convex/`) provides:
+
+### Function Types
+
+<Accordion title="Queries">
+Read-only operations that return data. Queries are:
+- Automatically cached by the client
+- Real-time reactive (re-run when data changes)
+- Strongly typed with validators
+
+```ts
+export const list = query({
+  args: { limit: v.optional(v.number()) },
+  returns: v.array(cardValidator),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return [];
+    
+    return await ctx.db
+      .query("cards")
+      .withIndex("by_user_deleted", (q) => 
+        q.eq("userId", user.id).eq("isDeleted", false)
+      )
+      .order("desc")
+      .take(args.limit ?? 50);
+  },
+});
+```
+</Accordion>
+
+<Accordion title="Mutations">
+Write operations that modify data. Mutations:
+- Run transactionally
+- Can schedule workflows and actions
+- Trigger automatic query revalidation
+
+```ts
+export const update = mutation({
+  args: { id: v.id("cards"), content: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) throw new Error("Unauthorized");
+    
+    await ctx.db.patch(args.id, {
+      content: args.content,
+      updatedAt: Date.now(),
+    });
+    
+    return null;
+  },
+});
+```
+</Accordion>
+
+<Accordion title="Actions">
+Operations that can call external APIs and services. Actions:
+- Run in Node.js environment
+- Can make HTTP requests
+- Can call queries and mutations
+- Used for AI processing and external integrations
+
+```ts
+"use node";
+
+import { action } from "./_generated/server";
+
+export const generateSummary = action({
+  args: { cardId: v.id("cards") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Call external AI service
+    const card = await ctx.runQuery(internal.cards.get, { id: args.cardId });
+    const summary = await callAIService(card.content);
+    
+    // Save result
+    await ctx.runMutation(internal.cards.updateMetadata, {
+      id: args.cardId,
+      aiSummary: summary,
+    });
+    
+    return null;
+  },
+});
+```
+</Accordion>
+
+<Accordion title="Workflows">
+Long-running multi-step processes with automatic retries. See [Workflows](/development/workflows) for details.
+</Accordion>
+
+### File Storage
+
+Convex provides built-in file storage via the `_storage` system table:
+
+```ts
+// Upload file
+const storageId = await ctx.storage.store(blob);
+
+// Get public URL (expires after 1 hour)
+const url = await ctx.storage.getUrl(storageId);
+
+// Get metadata from _storage table
+const metadata = await ctx.db.system.get(storageId);
+// Returns: { _id, _creationTime, contentType, sha256, size }
+```
+
+<Note>
+Storage URLs are signed and expire after 1 hour. Always generate fresh URLs when needed.
+</Note>
+
+## Import Patterns
+
+Teak uses TypeScript path aliases for clean imports:
+
+```ts
+// API references
+import { api } from "@teak/convex";
+import { internal } from "@teak/convex";
+
+// Types
+import type { Doc, Id } from "@teak/convex/_generated/dataModel";
+
+// Shared constants and utilities
+import { CARD_TYPES } from "@teak/convex/shared/constants";
+import { cardTypeValidator } from "@teak/convex/schema";
+```
+
+## Card Types
+
+Teak supports eight card types defined in `schema.ts:packages/convex/schema.ts:6-15`:
+
+```ts
+export const cardTypes = [
+  "text",      // Plain text notes
+  "link",      // URLs with metadata
+  "image",     // Images with palette extraction
+  "video",     // Videos with thumbnails
+  "audio",     // Audio recordings
+  "document",  // PDFs and documents
+  "palette",   // Color palettes
+  "quote",     // Quoted text
+] as const;
+```
+
+Each type has different processing requirements handled by the [AI Processing Pipeline](/development/workflows).

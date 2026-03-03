@@ -1,0 +1,366 @@
+---
+title: Update Card
+description: Update card content, metadata, and properties with automatic reprocessing
+---
+
+## updateCard
+
+Updates basic card fields (content, url, tags, notes). Automatically triggers AI reprocessing when content changes.
+
+<CodeGroup>
+
+```typescript React
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function EditCardForm({ cardId }: { cardId: Id<"cards"> }) {
+  const updateCard = useMutation(api.card.updateCard.updateCard);
+
+  const handleSave = async (content: string) => {
+    await updateCard({
+      id: cardId,
+      content,
+      tags: ["updated", "important"]
+    });
+  };
+
+  return <form onSubmit={handleSave}>{/* ... */}</form>;
+}
+```
+
+```typescript Update Content
+// Update card content (triggers AI reprocessing)
+await updateCard({
+  id: cardId,
+  content: "Updated content with new information"
+});
+```
+
+```typescript Update URL
+// Update URL for link card
+await updateCard({
+  id: cardId,
+  url: "https://new-url.com/article"
+});
+```
+
+```typescript Update Tags
+// Update tags only
+await updateCard({
+  id: cardId,
+  tags: ["project-a", "urgent", "design"]
+});
+```
+
+```typescript Update Notes
+// Add or update notes
+await updateCard({
+  id: cardId,
+  notes: "Follow up on this next week"
+});
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="id" type="Id<'cards'>" required>
+  The unique identifier of the card to update.
+</ParamField>
+
+<ParamField path="content" type="string">
+  Updated card content. For quote cards, quotation marks are automatically normalized.
+  
+  **Triggers AI reprocessing**: When content changes, the card re-enters the processing pipeline for metadata extraction and categorization.
+</ParamField>
+
+<ParamField path="url" type="string">
+  Updated URL. Typically used for link cards.
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Updated tags array. Replaces existing tags completely.
+  
+  ```typescript
+  tags: ["work", "important"] // Replaces all previous tags
+  ```
+</ParamField>
+
+<ParamField path="notes" type="string">
+  Updated notes text. Replaces existing notes.
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="null">
+  Returns `null` on success. Throws an error if the operation fails.
+</ResponseField>
+
+### Behavior
+
+<AccordionGroup>
+  <Accordion title="Authorization Check">
+    Verifies:
+    1. User is authenticated
+    2. Card exists
+    3. Card belongs to the authenticated user
+    
+    Throws an error if any check fails.
+  </Accordion>
+  
+  <Accordion title="Quote Normalization">
+    For quote-type cards, content is automatically normalized:
+    
+    ```typescript
+    // Input
+    content: '"Updated quote text" - Author'
+    
+    // Stored as
+    content: 'Updated quote text - Author'
+    ```
+    
+    Quotation marks are removed and content is cleaned.
+  </Accordion>
+  
+  <Accordion title="Processing Pipeline Trigger">
+    When `content` is updated:
+    
+    1. Sets `processingStatus.metadata` to `"pending"`
+    2. For link cards, also sets `processingStatus.categorize` to `"pending"`
+    3. Schedules `cardProcessingWorkflow` to run asynchronously
+    4. Workflow re-extracts AI metadata, tags, and summaries
+    
+    This ensures cards stay up-to-date with the latest AI models.
+  </Accordion>
+  
+  <Accordion title="Timestamp Updates">
+    Always updates `updatedAt` to current timestamp, regardless of which field changed.
+  </Accordion>
+</AccordionGroup>
+
+### Error Handling
+
+<ResponseField name="User must be authenticated" type="Error">
+  Thrown when no authenticated session exists.
+</ResponseField>
+
+<ResponseField name="Card not found" type="Error">
+  Thrown when card with given ID doesn't exist.
+</ResponseField>
+
+<ResponseField name="Not authorized to update this card" type="Error">
+  Thrown when authenticated user doesn't own the card.
+</ResponseField>
+
+---
+
+## updateCardField
+
+Unified mutation for updating any card field or performing card operations (favorite, delete, restore).
+
+<CodeGroup>
+
+```typescript Toggle Favorite
+import { useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+const updateCardField = useMutation(api.card.updateCard.updateCardField);
+
+// Toggle favorite status
+await updateCardField({
+  cardId,
+  field: "isFavorited"
+});
+```
+
+```typescript Delete Card
+// Soft delete a card
+await updateCardField({
+  cardId,
+  field: "delete"
+});
+```
+
+```typescript Restore Card
+// Restore a deleted card
+await updateCardField({
+  cardId,
+  field: "restore"
+});
+```
+
+```typescript Remove AI Tag
+// Remove a specific AI-generated tag
+await updateCardField({
+  cardId,
+  field: "removeAiTag",
+  tagToRemove: "outdated"
+});
+```
+
+```typescript Update AI Summary
+// Manually update AI summary
+await updateCardField({
+  cardId,
+  field: "aiSummary",
+  value: "Custom summary text"
+});
+```
+
+```typescript Update URL
+// Update URL (triggers reprocessing)
+await updateCardField({
+  cardId,
+  field: "url",
+  value: "https://example.com/new-url"
+});
+```
+
+</CodeGroup>
+
+### Arguments
+
+<ParamField path="cardId" type="Id<'cards'>" required>
+  The unique identifier of the card to update.
+</ParamField>
+
+<ParamField path="field" type="string" required>
+  The field or operation to perform:
+  
+  - `"content"` - Update main content
+  - `"url"` - Update URL
+  - `"notes"` - Update notes
+  - `"tags"` - Update user tags
+  - `"aiSummary"` - Update AI summary
+  - `"isFavorited"` - Toggle favorite status
+  - `"removeAiTag"` - Remove specific AI tag
+  - `"delete"` - Soft delete card
+  - `"restore"` - Restore deleted card
+</ParamField>
+
+<ParamField path="value" type="any">
+  The new value for the field. Type depends on the field:
+  
+  - `content`, `url`, `notes`, `aiSummary`: string
+  - `tags`: string[]
+  - `isFavorited`, `delete`, `restore`: not needed (operation-based)
+</ParamField>
+
+<ParamField path="tagToRemove" type="string">
+  Required when `field` is `"removeAiTag"`. Specifies which AI tag to remove.
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="any">
+  Returns the update result (typically the card object or null). Return type varies based on operation.
+</ResponseField>
+
+### Field-Specific Behavior
+
+<AccordionGroup>
+  <Accordion title="content">
+    Updates card content:
+    
+    - Trims whitespace
+    - Normalizes quotes for quote-type cards
+    - Sets `processingStatus.metadata` to pending if content changed
+    - For link cards, also sets `processingStatus.categorize` to pending
+    - Triggers `cardProcessingWorkflow` asynchronously
+  </Accordion>
+  
+  <Accordion title="url">
+    Updates card URL:
+    
+    - Trims whitespace, sets to `undefined` if empty
+    - Sets `processingStatus.classify` to pending
+    - Sets `processingStatus.metadata` to pending
+    - Sets `processingStatus.categorize` to pending
+    - Clears existing `linkPreview` and `linkCategory` metadata
+    - Sets `metadataStatus` to `"pending"`
+    - Triggers complete reprocessing pipeline
+  </Accordion>
+  
+  <Accordion title="notes">
+    Updates notes field:
+    
+    - Trims whitespace, sets to `undefined` if empty
+    - Does not trigger AI reprocessing
+  </Accordion>
+  
+  <Accordion title="tags">
+    Replaces user-defined tags:
+    
+    - Accepts array of strings
+    - Sets to `undefined` if empty array
+    - Does not trigger AI reprocessing
+  </Accordion>
+  
+  <Accordion title="aiSummary">
+    Manually updates AI-generated summary:
+    
+    - Trims whitespace, sets to `undefined` if empty
+    - Does not trigger automatic regeneration
+  </Accordion>
+  
+  <Accordion title="isFavorited">
+    Toggles favorite status:
+    
+    - Flips boolean value: `true` → `false`, `false` → `true`, `undefined` → `true`
+    - No value parameter needed
+  </Accordion>
+  
+  <Accordion title="removeAiTag">
+    Removes a specific AI-generated tag:
+    
+    - Requires `tagToRemove` parameter
+    - Filters out the specified tag
+    - Sets `aiTags` to `undefined` if no tags remain
+    - Returns card unchanged if tag not found or no AI tags exist
+  </Accordion>
+  
+  <Accordion title="delete">
+    Soft deletes the card:
+    
+    - Sets `isDeleted` to `true`
+    - Sets `deletedAt` to current timestamp
+    - Card remains in database but hidden from normal queries
+    - Can be restored with `"restore"` operation
+  </Accordion>
+  
+  <Accordion title="restore">
+    Restores a soft-deleted card:
+    
+    - Sets `isDeleted` to `undefined`
+    - Sets `deletedAt` to `undefined`
+    - Throws error if card is not deleted
+    - Card reappears in normal queries
+  </Accordion>
+</AccordionGroup>
+
+### Error Handling
+
+<ResponseField name="User must be authenticated" type="Error">
+  Thrown when no authenticated session exists.
+</ResponseField>
+
+<ResponseField name="Card not found" type="Error">
+  Thrown when card with given ID doesn't exist.
+</ResponseField>
+
+<ResponseField name="Not authorized to modify this card" type="Error">
+  Thrown when authenticated user doesn't own the card.
+</ResponseField>
+
+<ResponseField name="Card is not deleted" type="Error">
+  Thrown when attempting to restore a card that isn't deleted.
+</ResponseField>
+
+<ResponseField name="Unsupported field: [field]" type="Error">
+  Thrown when an invalid field name is provided.
+</ResponseField>
+
+### Source References
+
+- `updateCard`: `packages/convex/card/updateCard.ts:12`
+- `updateCardField`: `packages/convex/card/updateCard.ts:86`
