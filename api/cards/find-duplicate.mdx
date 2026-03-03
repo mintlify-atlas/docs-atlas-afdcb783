@@ -1,0 +1,177 @@
+---
+title: Find Duplicate Card
+description: Check if a URL already exists in your cards
+---
+
+## findDuplicateCard
+
+Checks if a card with the given URL already exists for the authenticated user. Useful for preventing duplicate links and showing existing cards before creating new ones.
+
+<Note>
+  This query only finds non-deleted cards. Deleted cards in the trash are not considered duplicates.
+</Note>
+
+### Parameters
+
+<ParamField path="url" type="string" required>
+  The URL to check for duplicates
+</ParamField>
+
+### Returns
+
+<ResponseField name="card" type="Card | null">
+  The existing card if found, or `null` if no duplicate exists
+  
+  <Expandable title="Card object">
+    <ResponseField name="_id" type="Id<'cards'>">
+      Unique card identifier
+    </ResponseField>
+    
+    <ResponseField name="userId" type="string">
+      Owner user ID
+    </ResponseField>
+    
+    <ResponseField name="content" type="string">
+      Card content
+    </ResponseField>
+    
+    <ResponseField name="type" type="CardType">
+      Card type (text, link, image, etc.)
+    </ResponseField>
+    
+    <ResponseField name="url" type="string | undefined">
+      Associated URL if this is a link card
+    </ResponseField>
+    
+    <ResponseField name="fileUrl" type="string | undefined">
+      Signed URL for the file (expires after 1 hour)
+    </ResponseField>
+    
+    <ResponseField name="thumbnailUrl" type="string | undefined">
+      Signed URL for the thumbnail (expires after 1 hour)
+    </ResponseField>
+    
+    <ResponseField name="metadata" type="object | undefined">
+      Link preview and other metadata
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="number">
+      Creation timestamp (Unix ms)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Check Before Creating
+
+```typescript
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function SaveLinkButton({ url }: { url: string }) {
+  const existingCard = useQuery(api.card.findDuplicateCard, { url });
+  const createCard = useMutation(api.card.createCard);
+  
+  const handleSave = async () => {
+    if (existingCard) {
+      // Show existing card instead of creating duplicate
+      alert("This link is already saved!");
+      return;
+    }
+    
+    await createCard({ content: url, type: "link" });
+  };
+  
+  return (
+    <button onClick={handleSave}>
+      {existingCard ? "Already Saved" : "Save Link"}
+    </button>
+  );
+}
+```
+
+### Prevent Duplicates in Browser Extension
+
+```typescript
+// Browser extension background script
+import { ConvexHttpClient } from "convex/browser";
+
+const client = new ConvexHttpClient(CONVEX_URL);
+
+async function saveCurrentTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const url = tab.url;
+  
+  // Check for duplicates
+  const duplicate = await client.query(api.card.findDuplicateCard, { url });
+  
+  if (duplicate) {
+    chrome.notifications.create({
+      type: "basic",
+      title: "Already Saved",
+      message: `This page was saved on ${new Date(duplicate.createdAt).toLocaleDateString()}`
+    });
+    return;
+  }
+  
+  // Create new card
+  await client.mutation(api.card.createCard, {
+    content: url,
+    type: "link"
+  });
+}
+```
+
+## Implementation Details
+
+### Index Usage
+
+The query uses the `by_user_url_deleted` index for fast lookups:
+
+```typescript
+.withIndex("by_user_url_deleted", (q) =>
+  q.eq("userId", userId)
+   .eq("url", url)
+   .eq("isDeleted", undefined)
+)
+```
+
+This ensures O(log n) performance even with large card collections.
+
+### URL Matching
+
+- Exact URL match only (case-sensitive)
+- Does not normalize URLs (e.g., `http://` vs `https://`)
+- Does not match URL fragments or query parameters
+
+<Tip>
+  Normalize URLs on the client side before checking for duplicates if you want to treat `https://example.com` and `http://example.com` as the same URL.
+</Tip>
+
+### File URLs
+
+If the duplicate card has associated files, the response includes signed URLs that expire after 1 hour. Always call `findDuplicateCard` again when displaying the card to get fresh URLs.
+
+## Error Handling
+
+### Unauthenticated
+
+If the user is not authenticated, the query returns `null` instead of throwing an error.
+
+```typescript
+// Unauthenticated users always get null
+const duplicate = await client.query(api.card.findDuplicateCard, { url });
+// duplicate === null
+```
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="Create Card" icon="plus" href="/api/cards/create">
+    Create a new card after checking for duplicates
+  </Card>
+  <Card title="Get Cards" icon="list" href="/api/cards/get">
+    Query existing cards with filters
+  </Card>
+</CardGroup>

@@ -1,0 +1,258 @@
+---
+title: Revoke API Key
+description: Invalidate an existing API key
+---
+
+## revokeUserApiKey
+
+Revokes an existing API key, making it invalid for future authentication. Use this when:
+
+- You suspect a key has been compromised
+- You no longer need access from a particular application
+- You want to rotate keys for security
+
+<Warning>
+  Revocation is immediate and permanent. The key cannot be reactivated.
+</Warning>
+
+### Parameters
+
+<ParamField path="keyId" type="Id<'apiKeys'>" required>
+  The unique identifier of the API key to revoke
+</ParamField>
+
+### Returns
+
+<ResponseField name="success" type="boolean">
+  Always `true` if the operation succeeded
+</ResponseField>
+
+<ResponseField name="revokedAt" type="number">
+  Unix timestamp (in milliseconds) when the key was revoked
+</ResponseField>
+
+## Usage
+
+### Revoke from Settings UI
+
+```typescript
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function RevokeKeyButton({ keyId }: { keyId: Id<"apiKeys"> }) {
+  const revokeKey = useMutation(api.apiKeys.revokeUserApiKey);
+  const [isRevoking, setIsRevoking] = useState(false);
+  
+  const handleRevoke = async () => {
+    if (!confirm("Are you sure? This cannot be undone.")) {
+      return;
+    }
+    
+    setIsRevoking(true);
+    try {
+      const result = await revokeKey({ keyId });
+      alert(`Key revoked at ${new Date(result.revokedAt).toLocaleString()}`);
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+  
+  return (
+    <button onClick={handleRevoke} disabled={isRevoking}>
+      {isRevoking ? "Revoking..." : "Revoke Key"}
+    </button>
+  );
+}
+```
+
+### Revoke All Keys (Security Response)
+
+```typescript
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@teak/convex";
+
+function RevokeAllKeys() {
+  const apiKeys = useQuery(api.apiKeys.listUserApiKeys);
+  const revokeKey = useMutation(api.apiKeys.revokeUserApiKey);
+  
+  const revokeAllActive = async () => {
+    if (!confirm("Revoke ALL active API keys?")) {
+      return;
+    }
+    
+    const activeKeys = apiKeys?.filter(k => !k.revokedAt) ?? [];
+    
+    await Promise.all(
+      activeKeys.map(key => revokeKey({ keyId: key.id }))
+    );
+    
+    alert(`Revoked ${activeKeys.length} keys`);
+  };
+  
+  return (
+    <button onClick={revokeAllActive}>
+      Emergency: Revoke All Keys
+    </button>
+  );
+}
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "revokedAt": 1704153600000
+}
+```
+
+## Behavior
+
+### Immediate Effect
+
+Once revoked, the API key becomes invalid immediately:
+
+1. The `revokedAt` timestamp is set to the current time
+2. The key is marked as revoked in the database
+3. All future authentication attempts with this key will fail
+
+### Idempotent Operation
+
+Revoking an already-revoked key succeeds without error:
+
+```typescript
+// First revocation
+await revokeKey({ keyId: "abc123" });
+// success: true, revokedAt: 1704153600000
+
+// Second revocation (idempotent)
+await revokeKey({ keyId: "abc123" });
+// success: true, revokedAt: 1704153600000 (same timestamp)
+```
+
+### Cannot Reactivate
+
+There is no way to reactivate a revoked key. You must create a new API key if you need access again.
+
+## Security Considerations
+
+### When to Revoke
+
+Revoke API keys in these situations:
+
+<AccordionGroup>
+  <Accordion title="Key Compromise">
+    If you suspect your API key has been exposed:
+    
+    - In public GitHub repository
+    - In logs or error messages
+    - On a compromised device
+    - Shared accidentally
+    
+    **Action**: Revoke immediately and create a new key
+  </Accordion>
+  
+  <Accordion title="Application Decommissioned">
+    When you stop using an application that has your API key:
+    
+    - Uninstalled browser extension
+    - Removed Raycast extension
+    - Deprecated integration
+    
+    **Action**: Revoke to prevent unauthorized use
+  </Accordion>
+  
+  <Accordion title="Regular Rotation">
+    As a security best practice:
+    
+    - Rotate keys every 90 days
+    - Rotate after team member departure
+    - Rotate after security audit
+    
+    **Action**: Create new key, update applications, revoke old key
+  </Accordion>
+</AccordionGroup>
+
+### Revocation Audit Trail
+
+Revoked keys remain in the database for audit purposes:
+
+```typescript
+const allKeys = await client.query(api.apiKeys.listUserApiKeys);
+const revokedKeys = allKeys.filter(k => k.revokedAt);
+
+console.log("Revoked keys:", revokedKeys.map(k => ({
+  prefix: k.keyPrefix,
+  revokedAt: new Date(k.revokedAt).toISOString()
+})));
+```
+
+This helps track when keys were compromised or rotated.
+
+## Error Handling
+
+### Key Not Found
+
+If the key doesn't exist or belongs to another user:
+
+```json
+{
+  "code": "NOT_FOUND",
+  "error": "API key not found"
+}
+```
+
+### Unauthorized
+
+If the user is not authenticated:
+
+```json
+{
+  "code": "UNAUTHORIZED",
+  "error": "Authentication required"
+}
+```
+
+### Permission Denied
+
+If trying to revoke another user's key:
+
+```json
+{
+  "code": "FORBIDDEN",
+  "error": "Cannot revoke another user's API key"
+}
+```
+
+## Post-Revocation
+
+### Update Applications
+
+After revoking a key, update any applications using it:
+
+1. **Raycast Extension**: Update API key in extension preferences
+2. **Browser Extension**: Re-authenticate through popup
+3. **CI/CD**: Update secrets in your pipeline
+4. **Scripts**: Update environment variables
+
+### Monitor Failed Attempts
+
+Watch for authentication failures that might indicate:
+
+- Applications still using revoked keys
+- Unauthorized access attempts
+- Forgotten integrations
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="Create API Key" icon="plus" href="/api/api-keys/create">
+    Generate a new API key after revocation
+  </Card>
+  <Card title="List API Keys" icon="list" href="/api/api-keys/list">
+    View all your API keys
+  </Card>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn about API authentication
+  </Card>
+</CardGroup>

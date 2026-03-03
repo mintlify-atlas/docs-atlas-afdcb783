@@ -1,0 +1,228 @@
+---
+title: List API Keys
+description: View all API keys for your account
+---
+
+## listUserApiKeys
+
+Lists all API keys (both active and revoked) for the authenticated user. Use this to display API key management in your settings UI.
+
+### Parameters
+
+No parameters required.
+
+### Returns
+
+<ResponseField name="keys" type="Array<ApiKey>">
+  Array of API key objects
+  
+  <Expandable title="ApiKey object">
+    <ResponseField name="id" type="Id<'apiKeys'>">
+      Unique identifier for the API key record
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Friendly name of the API key
+    </ResponseField>
+    
+    <ResponseField name="keyPrefix" type="string">
+      The 12-character prefix for identification (e.g., `a1b2c3d4e5f6`)
+    </ResponseField>
+    
+    <ResponseField name="maskedKey" type="string">
+      Masked version of the key for display (e.g., `a1b2c3d4e5f6••••••••`)
+    </ResponseField>
+    
+    <ResponseField name="access" type="'full_access'">
+      Access level granted to this key
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="number">
+      Unix timestamp when the key was created
+    </ResponseField>
+    
+    <ResponseField name="updatedAt" type="number">
+      Unix timestamp when the key was last modified
+    </ResponseField>
+    
+    <ResponseField name="lastUsedAt" type="number | undefined">
+      Unix timestamp when the key was last used (undefined if never used)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Display in Settings
+
+```typescript
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@teak/convex";
+
+function ApiKeyList() {
+  const apiKeys = useQuery(api.apiKeys.listUserApiKeys);
+  const revokeKey = useMutation(api.apiKeys.revokeUserApiKey);
+  
+  if (!apiKeys) return <div>Loading...</div>;
+  
+  const activeKeys = apiKeys.filter(k => !k.revokedAt);
+  const revokedKeys = apiKeys.filter(k => k.revokedAt);
+  
+  return (
+    <div>
+      <h2>Active API Keys</h2>
+      {activeKeys.length === 0 ? (
+        <p>No active API keys</p>
+      ) : (
+        <ul>
+          {activeKeys.map(key => (
+            <li key={key.id}>
+              <div>
+                <strong>{key.name}</strong>
+                <code>{key.maskedKey}</code>
+              </div>
+              <div>
+                <small>Created: {new Date(key.createdAt).toLocaleDateString()}</small>
+                {key.lastUsedAt && (
+                  <small>Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</small>
+                )}
+              </div>
+              <button onClick={() => revokeKey({ keyId: key.id })}>
+                Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      
+      {revokedKeys.length > 0 && (
+        <>
+          <h3>Revoked Keys</h3>
+          <ul>
+            {revokedKeys.map(key => (
+              <li key={key.id}>
+                <code>{key.maskedKey}</code>
+                <small>(revoked)</small>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+### Example Response
+
+```json
+[
+  {
+    "id": "jh7x5t9p2k8n4m1q6r3s",
+    "name": "Raycast Extension",
+    "keyPrefix": "a1b2c3d4e5f6",
+    "maskedKey": "a1b2c3d4e5f6••••••••",
+    "access": "full_access",
+    "createdAt": 1704067200000,
+    "updatedAt": 1704067200000,
+    "lastUsedAt": 1704153600000
+  },
+  {
+    "id": "kj8y6u0q3l9o5n2r7t4u",
+    "name": "API Keys",
+    "keyPrefix": "b2c3d4e5f6g7",
+    "maskedKey": "b2c3d4e5f6g7••••••••",
+    "access": "full_access",
+    "createdAt": 1703980800000,
+    "updatedAt": 1703980800000,
+    "revokedAt": 1704067200000
+  }
+]
+```
+
+## Key States
+
+### Active Keys
+
+Keys without a `revokedAt` timestamp are active and can be used for authentication.
+
+```typescript
+const activeKeys = apiKeys.filter(key => !key.revokedAt);
+```
+
+### Revoked Keys
+
+Keys with a `revokedAt` timestamp have been revoked and cannot be used.
+
+```typescript
+const revokedKeys = apiKeys.filter(key => key.revokedAt);
+```
+
+## Display Format
+
+### Masked Key
+
+The `maskedKey` field shows the prefix followed by bullets for secure display:
+
+```
+a1b2c3d4e5f6••••••••
+```
+
+This allows users to identify their keys without exposing the secret.
+
+<Warning>
+  Never display the full API key after creation. The secret portion is not retrievable from the database.
+</Warning>
+
+### Last Used
+
+The `lastUsedAt` field is updated whenever the API key is used to authenticate a request. This helps track which keys are actively used.
+
+<Note>
+  `lastUsedAt` is `undefined` for keys that have never been used.
+</Note>
+
+## Sorting
+
+Keys are returned in reverse chronological order (newest first) by creation date.
+
+```typescript
+// Keys are already sorted by createdAt descending
+const mostRecentKey = apiKeys[0];
+```
+
+## Authentication
+
+This query requires an authenticated user session. Unauthenticated requests return an empty array.
+
+```typescript
+// Unauthenticated
+const keys = await client.query(api.apiKeys.listUserApiKeys);
+// keys === []
+```
+
+## Performance
+
+This query uses the `by_user_revoked` index for efficient lookups:
+
+```typescript
+.withIndex("by_user_revoked", (q) =>
+  q.eq("userId", userId)
+)
+```
+
+Performance is O(log n + k) where k is the number of keys for the user (typically 1-5).
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="Create API Key" icon="plus" href="/api/api-keys/create">
+    Generate a new API key
+  </Card>
+  <Card title="Revoke API Key" icon="ban" href="/api/api-keys/revoke">
+    Revoke an existing API key
+  </Card>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn how to use API keys
+  </Card>
+</CardGroup>

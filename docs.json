@@ -81,7 +81,8 @@
               "api/cards/get",
               "api/cards/update",
               "api/cards/delete",
-              "api/cards/search"
+              "api/cards/search",
+              "api/cards/find-duplicate"
             ]
           },
           {
@@ -89,6 +90,14 @@
             "pages": [
               "api/files/upload",
               "api/files/get-url"
+            ]
+          },
+          {
+            "group": "API Keys",
+            "pages": [
+              "api/api-keys/create",
+              "api/api-keys/list",
+              "api/api-keys/revoke"
             ]
           }
         ]
